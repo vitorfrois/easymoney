@@ -1,4 +1,4 @@
-use crate::models::Transaction;
+use crate::models::{NewTransaction, Transaction};
 use dirs_next::data_dir;
 use rusqlite::Connection;
 use rusqlite::Result;
@@ -29,30 +29,31 @@ impl Database {
                 date    DATE,
                 title   TEXT,
                 amount  REAL NOT NULL,
+                kind    TEXT NOT NULL,
                 tgroup  TEXT NULL,
-                PRIMARY KEY (date, title)
+                UNIQUE(date, title)
                 )",
             (),
         )?;
         Ok(())
     }
 
-    pub fn insert_transactions(&self, transactions: Vec<Transaction>) -> Result<()> {
+    pub fn insert_transactions(&self, transactions: Vec<NewTransaction>) -> Result<()> {
         for transaction in transactions {
             self.insert_transaction(transaction);
         }
         Ok(())
     }
 
-    pub fn insert_transaction(&self, transaction: Transaction) {
+    pub fn insert_transaction(&self, transaction: NewTransaction) {
         self.conn
             .execute(
-                "INSERT INTO transactions (date, title, amount, tgroup) VALUES (?1, ?2, ?3, ?4)",
+                "INSERT OR IGNORE INTO transactions (date, title, amount, kind) VALUES (?1, ?2, ?3, ?4)",
                 (
                     &transaction.date,
                     &transaction.title,
                     &transaction.amount,
-                    &transaction.group,
+                    &transaction.kind,
                 ),
             )
             .ok();
@@ -61,15 +62,16 @@ impl Database {
     pub fn get_transactions(&self) -> Result<Vec<Transaction>> {
         let mut statement = self
             .conn
-            .prepare("SELECT date, title, amount, tgroup FROM transactions")?;
+            .prepare("SELECT rowid, date, title, amount, kind, tgroup FROM transactions")?;
 
         let rows = statement.query_map([], |row| {
             Ok(Transaction {
-                date: row.get(0)?,
-                title: row.get(1)?,
-                amount: row.get(2)?,
-                group: None,
-                // kind: row.get(4)?,
+                id: row.get(0)?,
+                date: row.get(1)?,
+                title: row.get(2)?,
+                amount: row.get(3)?,
+                kind: row.get(4)?,
+                group: row.get(5)?,
             })
         })?;
 

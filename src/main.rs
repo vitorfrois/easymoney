@@ -4,10 +4,12 @@ use polars::prelude::*;
 use rusqlite::Result;
 use std::collections::HashMap;
 use std::fs;
+use std::str::FromStr;
 
-mod db;
-mod format;
-mod models;
+pub mod app;
+pub mod db;
+pub mod format;
+pub mod models;
 
 fn read_csv(path: &fs::DirEntry) -> PolarsResult<DataFrame> {
     CsvReadOptions::default()
@@ -24,15 +26,7 @@ fn read_folder(path: String) -> PolarsResult<DataFrame> {
 
     for path in paths {
         let df = read_csv(&path?)?;
-        match formatter.check_kind(&df) {
-            Some(models::Kind::Credit) => {
-                formatter.concat(format::CreditFormatter::new(df).format()?)
-            }
-            Some(models::Kind::Debit) => {
-                formatter.concat(format::AccountFormatter::new(df).format()?)
-            }
-            None => {}
-        };
+        formatter.add(df);
     }
 
     let full_df = formatter.build()?;
@@ -40,22 +34,42 @@ fn read_folder(path: String) -> PolarsResult<DataFrame> {
     Ok(full_df)
 }
 
-fn convert_df(df: DataFrame) -> Result<Vec<models::Transaction>, polars::error::PolarsError> {
-    let date_series = df.column("date")?.date().unwrap().as_date_iter();
-    let title_series = df.column("title")?.str().unwrap().iter();
-    let amount_series = df.column("amount")?.f64().unwrap().iter();
-    let group_series = df.column("kind")?.str().unwrap().iter();
+fn convert_df(df: DataFrame) -> Vec<models::NewTransaction> {
+    let date_series = df
+        .column("date")
+        .expect("CSV Date error")
+        .date()
+        .unwrap()
+        .as_date_iter();
+    let title_series = df
+        .column("title")
+        .expect("CSV Str error")
+        .str()
+        .unwrap()
+        .iter();
+    let amount_series = df
+        .column("amount")
+        .expect("CSV Float error")
+        .f64()
+        .unwrap()
+        .iter();
+    let group_series = df
+        .column("kind")
+        .expect("CSV Str error")
+        .str()
+        .unwrap()
+        .iter();
 
     let combined = multizip((date_series, title_series, amount_series, group_series));
-    let res: Vec<models::Transaction> = combined
-        .map(|(date, title, amount, _kind)| models::Transaction {
+    let res: Vec<models::NewTransaction> = combined
+        .map(|(date, title, amount, kind)| models::NewTransaction {
             date: date.unwrap(),
             title: title.expect("DateErr").to_string(),
             amount: amount.unwrap(),
-            group: None,
+            kind: models::Kind::from_str(kind.expect("Kind not found")).unwrap(),
         })
         .collect();
-    Ok(res)
+    res
 }
 
 fn get_transactions_by_month(transactions: &Vec<models::Transaction>) -> HashMap<(i32, u32), f64> {
@@ -74,7 +88,7 @@ fn main() -> Result<()> {
 
     let database = db::Database::new()?;
 
-    let transactions = convert_df(df).unwrap();
+    let transactions = convert_df(df);
 
     for i in 1..5 {
         println!("{:?}", transactions[i]);
@@ -87,45 +101,51 @@ fn main() -> Result<()> {
 
     let transactions = database.get_transactions()?;
 
-    println!("First five transactions");
-    for i in 1..5 {
-        println!("{:?}", transactions[i]);
-    }
-
-    fn filter_transaction(transactions: &Vec<models::Transaction>) -> Vec<models::Transaction> {
-        transactions
-            .iter()
-            .filter(|row| row.amount < 0.0)
-            .cloned()
-            .collect()
-    }
-
-    let expenses = filter_transaction(&transactions);
-
-    let total_expenses: f64 = expenses.iter().map(|row| row.amount).sum();
-    let monthly_totals = get_transactions_by_month(&expenses);
-    println!(
-        "Total expenses: {}. By month: {:?}",
-        total_expenses, monthly_totals
-    );
-    println!("Some expenses");
-    for i in 1..5 {
-        println!("{:?}", expenses[i]);
-    }
-
-    let earnings: Vec<models::Transaction> = transactions
-        .iter()
-        .map(|v| v.clone())
-        .filter(|row| row.amount > 0.0)
-        .collect();
-    let total_earnings: f64 = earnings.iter().map(|row| row.amount).sum();
-    let monthly_earnings = get_transactions_by_month(&earnings);
-    println!(
-        "Total earnings: {}. By month: {:?}",
-        total_earnings, monthly_earnings
-    );
-    println!("Some earnings");
-    println!("{:?}", earnings);
+    app::init_app(transactions);
+    // println!("First five transactions");
+    // for i in 0..5 {
+    //     println!("{}", transactions[i]);
+    // }
+    //
+    // fn filter_transaction(transactions: &Vec<models::Transaction>) -> Vec<models::Transaction> {
+    //     transactions
+    //         .iter()
+    //         .filter(|row| {
+    //             row.kind == models::Kind::DebitPurchase || row.kind == models::Kind::CreditPurchase
+    //         })
+    //         .cloned()
+    //         .collect()
+    // }
+    //
+    // let expenses = filter_transaction(&transactions);
+    //
+    // let total_expenses: f64 = expenses.iter().map(|row| row.amount).sum();
+    // let monthly_totals = get_transactions_by_month(&expenses);
+    // println!(
+    //     "Total expenses: {}. By month: {:?}",
+    //     total_expenses, monthly_totals
+    // );
+    // println!("Some expenses");
+    // for i in 1..5 {
+    //     println!("{:?}", expenses[i]);
+    // }
+    //
+    // let earnings: Vec<models::Transaction> = transactions
+    //     .iter()
+    //     .map(|v| v.clone())
+    //     .filter(|row| row.amount > 0.0)
+    //     .collect();
+    // let total_earnings: f64 = earnings.iter().map(|row| row.amount).sum();
+    // let monthly_earnings = get_transactions_by_month(&earnings);
+    // println!(
+    //     "Total earnings: {}. By month: {:?}",
+    //     total_earnings, monthly_earnings
+    // );
+    // println!("Some earnings");
+    //
+    // for (index, transaction) in earnings.iter().enumerate() {
+    //     println!("{}: {:?}", index, transaction);
+    // }
 
     Ok(())
 }
