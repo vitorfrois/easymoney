@@ -1,8 +1,8 @@
 mod csvtype;
 pub use csvtype::CsvType;
 
-mod group;
-pub use group::Group;
+mod category;
+pub use category::Category;
 
 mod kind;
 pub use kind::Kind;

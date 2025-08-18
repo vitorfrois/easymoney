@@ -60,7 +60,7 @@ impl DebitFormatter {
         self.df = self
             .df
             .lazy()
-            .with_column(kind)
+            .with_columns([kind, col("amount").abs()])
             .collect()
             .expect("DataFrame new columns error");
         self

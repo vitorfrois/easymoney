@@ -10,14 +10,14 @@ impl CreditFormatter {
     }
 
     fn select_columns(mut self) -> Self {
-        let kind = when(col("amount").gt(0))
+        let kind = when(col("amount").lt(0))
             .then(lit("CreditBillPayment"))
             .otherwise(lit("CreditPurchase"));
 
         self.df = self
             .df
             .lazy()
-            .with_columns([kind.alias("kind"), col("amount") * lit(-1)])
+            .with_columns([kind.alias("kind"), col("amount").abs()])
             .collect()
             .expect("DataFrame select error");
         self

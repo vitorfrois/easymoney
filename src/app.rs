@@ -11,6 +11,7 @@ use ratatui::{
         ScrollbarState, Table, TableState,
     },
 };
+use std::borrow::Cow;
 use style::palette::tailwind;
 
 use crate::models::Transaction;
@@ -22,12 +23,9 @@ const PALETTES: [tailwind::Palette; 4] = [
     tailwind::RED,
 ];
 
-const INFO_TEXT: [&str; 2] = [
-    "(Esc) quit | (↑) move up | (↓) move down | (←) move left | (→) move right",
-    "(Shift + →) next color | (Shift + ←) previous color",
-];
+const INFO_TEXT: [&str; 1] = ["(Esc) quit | (↑) move up | (↓) move down"];
 
-const ITEM_HEIGHT: usize = 4;
+const ITEM_HEIGHT: usize = 1;
 
 struct TableColors {
     buffer_bg: Color,
@@ -60,12 +58,19 @@ impl TableColors {
 }
 
 impl Transaction {
-    const fn ref_array(&self) -> [&String; 1] {
-        [&self.title]
-    }
-
-    fn title(&self) -> &str {
-        &self.title
+    fn ref_array(&self) -> [Cow<str>; 5] {
+        let group_string = match &self.group {
+            Some(s) => s.to_string(),
+            None => "N/A".to_string(),
+        };
+        let amount_string = format!("{:.2}", self.amount);
+        [
+            Cow::Owned(self.date.to_string()),
+            Cow::Borrowed(&self.title),
+            Cow::Owned(amount_string),
+            Cow::Owned(self.kind.to_string()),
+            Cow::Owned(group_string),
+        ]
     }
 }
 
@@ -117,44 +122,17 @@ impl App {
         self.scroll_state = self.scroll_state.position(i * ITEM_HEIGHT);
     }
 
-    pub fn next_column(&mut self) {
-        self.state.select_next_column();
-    }
-
-    pub fn previous_column(&mut self) {
-        self.state.select_previous_column();
-    }
-
-    pub fn next_color(&mut self) {
-        self.color_index = (self.color_index + 1) % PALETTES.len();
-    }
-
-    pub fn previous_color(&mut self) {
-        let count = PALETTES.len();
-        self.color_index = (self.color_index + count - 1) % count;
-    }
-
-    pub fn set_colors(&mut self) {
-        self.colors = TableColors::new(&PALETTES[self.color_index]);
-    }
-
     fn run(mut self, mut terminal: DefaultTerminal) -> Result<()> {
         loop {
             terminal.draw(|frame| self.draw(frame))?;
 
             if let Event::Key(key) = event::read()? {
                 if key.kind == KeyEventKind::Press {
-                    let shift_pressed = key.modifiers.contains(KeyModifiers::SHIFT);
+                    // let shift_pressed = key.modifiers.contains(KeyModifiers::SHIFT);
                     match key.code {
                         KeyCode::Char('q') | KeyCode::Esc => return Ok(()),
-                        KeyCode::Char('j') | KeyCode::Down => self.next_row(),
-                        KeyCode::Char('k') | KeyCode::Up => self.previous_row(),
-                        KeyCode::Char('l') | KeyCode::Right if shift_pressed => self.next_color(),
-                        KeyCode::Char('h') | KeyCode::Left if shift_pressed => {
-                            self.previous_color();
-                        }
-                        KeyCode::Char('l') | KeyCode::Right => self.next_column(),
-                        KeyCode::Char('h') | KeyCode::Left => self.previous_column(),
+                        KeyCode::Char('k') | KeyCode::Down => self.next_row(),
+                        KeyCode::Char('l') | KeyCode::Up => self.previous_row(),
                         _ => {}
                     }
                 }
@@ -166,10 +144,8 @@ impl App {
         let vertical = &Layout::vertical([Constraint::Min(5), Constraint::Length(4)]);
         let rects = vertical.split(frame.area());
 
-        self.set_colors();
-
         self.render_table(frame, rects[0]);
-        self.render_scrollbar(frame, rects[0]);
+        // self.render_scrollbar(frame, rects[0]);
         self.render_footer(frame, rects[1]);
     }
 
@@ -185,7 +161,7 @@ impl App {
             .add_modifier(Modifier::REVERSED)
             .fg(self.colors.selected_cell_style_fg);
 
-        let header = ["Name", "Address", "Email"]
+        let header = ["Date", "Title", "Amount (R$)", "Kind", "Group"]
             .into_iter()
             .map(Cell::from)
             .collect::<Row>()
@@ -198,25 +174,27 @@ impl App {
             };
             let item = data.ref_array();
             item.into_iter()
-                .map(|content| Cell::from(Text::from(format!("\n{content}\n"))))
+                .map(Cell::from)
                 .collect::<Row>()
-                .style(Style::new().fg(self.colors.row_fg).bg(color))
-                .height(4)
+                // .style(Style::new().fg(self.colors.row_fg).bg(color))
+                .height(1)
         });
         let bar = " █ ";
+        let block = Block::bordered().title("Transactions");
         let t = Table::new(
             rows,
             [
-                // + 1 is for padding.
-                Constraint::Length(10),
-                Constraint::Min(1),
-                Constraint::Min(1),
+                Constraint::Length(12),
+                Constraint::Min(20),
+                Constraint::Length(12),
+                Constraint::Length(20),
+                Constraint::Length(20),
             ],
         )
         .header(header)
         .row_highlight_style(selected_row_style)
-        .column_highlight_style(selected_col_style)
-        .cell_highlight_style(selected_cell_style)
+        // .column_highlight_style(selected_col_style)
+        // .cell_highlight_style(selected_cell_style)
         .highlight_symbol(Text::from(vec![
             "".into(),
             bar.into(),
@@ -224,7 +202,8 @@ impl App {
             "".into(),
         ]))
         .bg(self.colors.buffer_bg)
-        .highlight_spacing(HighlightSpacing::Always);
+        .highlight_spacing(HighlightSpacing::Always)
+        .block(block);
         frame.render_stateful_widget(t, area, &mut self.state);
     }
 
@@ -266,3 +245,4 @@ pub fn init_app(transactions: Vec<Transaction>) -> Result<()> {
     ratatui::restore();
     app_result
 }
+

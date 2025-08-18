@@ -9,6 +9,7 @@ use std::str::FromStr;
 pub mod app;
 pub mod db;
 pub mod format;
+pub mod labeling;
 pub mod models;
 
 fn read_csv(path: &fs::DirEntry) -> PolarsResult<DataFrame> {

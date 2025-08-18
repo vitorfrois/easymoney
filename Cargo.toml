@@ -8,7 +8,7 @@ chrono = "0.4.41"
 color-eyre = "0.6.5"
 dirs-next = "2.0.0"
 itertools = "0.14.0"
-polars = { version = "0.41", features = ["lazy", "strings"] }
+polars = { version = "0.41", features = ["abs", "lazy", "strings"] }
 ratatui = "0.29.0"
 rusqlite = { version = "0.37.0", features = ["chrono"] }
 serde = "1.0.219"

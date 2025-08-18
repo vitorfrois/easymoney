@@ -1,8 +1,15 @@
+use crate::labeling::CategoryMap;
+use crate::models::Category;
 use crate::models::{NewTransaction, Transaction};
 use dirs_next::data_dir;
-use rusqlite::Connection;
-use rusqlite::Result;
+use rusqlite::{Connection, Result, types::FromSql};
 use std::fs;
+use std::str::FromStr;
+
+use rusqlite::{
+    ToSql,
+    types::{FromSqlError, FromSqlResult, ToSqlOutput, ValueRef},
+};
 
 pub struct Database {
     conn: Connection,
@@ -24,6 +31,12 @@ impl Database {
     }
 
     pub fn initialize_database(&self) -> Result<()> {
+        self.create_transactions();
+        self.create_categories();
+        Ok(())
+    }
+
+    fn create_transactions(&self) -> Result<()> {
         self.conn.execute(
             "CREATE TABLE IF NOT EXISTS transactions (
                 date    DATE,
@@ -80,5 +93,48 @@ impl Database {
             transactions.push(row?);
         }
         Ok(transactions)
+    }
+
+    fn create_categories(&self) -> Result<()> {
+        self.conn.execute(
+            "CREATE TABLE IF NOT EXISTS categories (
+                title       TEXT,
+                category    TEXT, 
+                PRIMARY KEY (title, category)
+            )",
+            (),
+        )?;
+        Ok(())
+    }
+
+    pub fn insert_categories(&self, categories: CategoryMap) -> Result<()> {
+        for (title, category) in categories.map {
+            self.insert_category(title, category);
+        }
+        Ok(())
+    }
+
+    pub fn insert_category(&self, title: String, category: Category) {
+        self.conn
+            .execute(
+                "INSERT OR IGNORE INTO categories (title, category) VALUES (?1, ?2)",
+                (&title, &category),
+            )
+            .ok();
+    }
+
+    pub fn get_categories(&self) -> Result<CategoryMap> {
+        let mut statement = self
+            .conn
+            .prepare("SELECT title, category FROM categories")?;
+
+        let map = statement
+            .query_map([], |row| {
+                let category_str: String = row.get(1)?;
+                Ok((row.get(0)?, Category::from_str(&category_str)?))
+            })?
+            .collect::<Result<Vec<(String, Category)>, _>>()?;
+
+        Ok(CategoryMap { map })
     }
 }

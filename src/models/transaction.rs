@@ -1,4 +1,4 @@
-use crate::models::{Group, Kind};
+use crate::models::{Category, Kind};
 use chrono::NaiveDate;
 use std::fmt;
 
@@ -9,7 +9,7 @@ pub struct Transaction {
     pub title: String,
     pub amount: f64,
     pub kind: Kind,
-    pub group: Option<Group>,
+    pub group: Option<Category>,
 }
 
 impl fmt::Display for Transaction {
