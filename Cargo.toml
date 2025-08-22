@@ -12,3 +12,5 @@ polars = { version = "0.41", features = ["abs", "lazy", "strings"] }
 ratatui = "0.29.0"
 rusqlite = { version = "0.37.0", features = ["chrono"] }
 serde = "1.0.219"
+strum = { version = "0.27.2", features = ["std", "derive"] }
+strum_macros = "0.27.2"

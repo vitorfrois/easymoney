@@ -4,27 +4,49 @@ use rusqlite::{
 };
 use std::fmt;
 use std::str::FromStr;
+use strum::EnumIter;
 
-#[derive(Debug, Clone)]
+#[derive(Default, PartialEq, Eq, Debug, Clone, EnumIter)]
 pub enum Category {
+    #[default]
     Housing,
     Transportation,
     Food,
+    Supermarket,
     Savings,
     Health,
     Personal,
+    Trips,
     Other,
+}
+
+impl Category {
+    pub fn next(&self) -> Self {
+        match self {
+            Self::Housing => Self::Transportation,
+            Self::Transportation => Self::Food,
+            Self::Food => Self::Supermarket,
+            Self::Supermarket => Self::Savings,
+            Self::Savings => Self::Health,
+            Self::Health => Self::Personal,
+            Self::Personal => Self::Trips,
+            Self::Trips => Self::Other,
+            Self::Other => Self::Housing,
+        }
+    }
 }
 
 impl fmt::Display for Category {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Category::Housing => write!(f, "Housing"),
+            Category::Supermarket => write!(f, "Supermarket"),
             Category::Transportation => write!(f, "Transportation"),
             Category::Food => write!(f, "Food"),
             Category::Savings => write!(f, "Savings"),
             Category::Health => write!(f, "Health"),
             Category::Personal => write!(f, "Personal"),
+            Category::Trips => write!(f, "Trips"),
             Category::Other => write!(f, "Other"),
         }
     }
@@ -47,6 +69,8 @@ impl FromStr for Category {
             "Health" => Ok(Category::Health),
             "Personal" => Ok(Category::Personal),
             "Other" => Ok(Category::Other),
+            "Supermarket" => Ok(Category::Supermarket),
+            "Trips" => Ok(Category::Trips),
             _ => Err(FromSqlError::Other(format!("UnknownEnum {}", s).into())),
         }
     }

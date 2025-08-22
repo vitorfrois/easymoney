@@ -100,7 +100,11 @@ fn main() -> Result<()> {
         Err(_) => println!("SQL Insert Error"),
     }
 
-    let transactions = database.get_transactions()?;
+    let mut transactions = database.get_transactions()?;
+    let category_map = labeling::CategoryMap::new()?;
+    for transaction in transactions.iter_mut() {
+        transaction.group = category_map.classify_title(&transaction.title);
+    }
 
     app::init_app(transactions);
     // println!("First five transactions");
