@@ -2,14 +2,9 @@ use crate::labeling::CategoryMap;
 use crate::models::Category;
 use crate::models::{NewTransaction, Transaction};
 use dirs_next::data_dir;
-use rusqlite::{Connection, Result, types::FromSql};
+use rusqlite::{Connection, Result};
 use std::fs;
 use std::str::FromStr;
-
-use rusqlite::{
-    ToSql,
-    types::{FromSqlError, FromSqlResult, ToSqlOutput, ValueRef},
-};
 
 pub struct Database {
     conn: Connection,
@@ -31,8 +26,8 @@ impl Database {
     }
 
     pub fn initialize_database(&self) -> Result<()> {
-        self.create_transactions();
-        self.create_categories();
+        let _ = self.create_transactions();
+        let _ = self.create_categories();
         Ok(())
     }
 

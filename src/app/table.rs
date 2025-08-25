@@ -1,62 +1,20 @@
-use color_eyre::Result;
-use itertools::Itertools;
+use crossterm::event::KeyCode;
+use ratatui::Frame;
+use ratatui::style::palette::tailwind;
+use ratatui::widgets::StatefulWidget;
 use ratatui::{
-    DefaultTerminal, Frame,
-    crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers},
-    layout::{Constraint, Flex, Layout, Margin, Rect},
-    style::{self, Color, Modifier, Style, Stylize},
+    buffer::Buffer,
+    layout::{Constraint, Layout, Rect},
+    style::{Color, Modifier, Style, Stylize},
     text::Text,
-    widgets::{
-        Block, BorderType, Borders, Cell, Clear, HighlightSpacing, Paragraph, Row, Scrollbar,
-        ScrollbarOrientation, ScrollbarState, Table, TableState,
-    },
+    widgets::{Block, BorderType, Cell, HighlightSpacing, Paragraph, Row, Table, TableState},
 };
 use std::borrow::Cow;
-use style::palette::tailwind;
 
+use crate::app::color::{PALETTES, TableColors};
+use crate::app::footer::Footer;
 use crate::app::popup::PopupForm;
 use crate::models::Transaction;
-
-const PALETTES: [tailwind::Palette; 4] = [
-    tailwind::BLUE,
-    tailwind::EMERALD,
-    tailwind::INDIGO,
-    tailwind::RED,
-];
-
-const INFO_TEXT: [&str; 1] = ["(Esc) quit | (↑) move up | (↓) move down"];
-
-const ITEM_HEIGHT: usize = 1;
-
-struct TableColors {
-    buffer_bg: Color,
-    header_bg: Color,
-    header_fg: Color,
-    row_fg: Color,
-    selected_row_style_fg: Color,
-    selected_column_style_fg: Color,
-    selected_cell_style_fg: Color,
-    normal_row_color: Color,
-    alt_row_color: Color,
-    footer_border_color: Color,
-}
-
-impl TableColors {
-    const fn new(color: &tailwind::Palette) -> Self {
-        Self {
-            buffer_bg: tailwind::SLATE.c950,
-            header_bg: color.c900,
-            header_fg: tailwind::SLATE.c200,
-            row_fg: tailwind::SLATE.c200,
-            selected_row_style_fg: color.c400,
-            selected_column_style_fg: color.c400,
-            selected_cell_style_fg: color.c600,
-            normal_row_color: tailwind::SLATE.c950,
-            alt_row_color: tailwind::SLATE.c900,
-            footer_border_color: color.c400,
-        }
-    }
-}
 
 impl Transaction {
     fn ref_array(&self) -> [Cow<str>; 5] {
@@ -79,8 +37,9 @@ pub struct TableComponent {
     state: TableState,
     items: Vec<Transaction>,
     colors: TableColors,
-    edit_popup: bool,
+    focus_popup: bool,
     popup: PopupForm,
+    footer: Footer,
 }
 
 impl TableComponent {
@@ -89,8 +48,9 @@ impl TableComponent {
             state: TableState::default().with_selected(0),
             colors: TableColors::new(&PALETTES[0]),
             items: transactions.to_vec(),
-            edit_popup: false,
+            focus_popup: false,
             popup: PopupForm::new(&transactions[0]),
+            footer: Footer::new(),
         }
     }
 
@@ -130,38 +90,26 @@ impl TableComponent {
         self.items[self.state.selected().expect("Line number")] = transaction;
     }
 
-    pub fn run(&mut self, mut terminal: DefaultTerminal, keycode: &KeyCode) {
-        if self.edit_popup {
-            match self.popup.run(terminal) {
-                Some(transaction) => self.set_current_row(transaction),
-                None => (),
-            }
+    pub fn handle_key_events(&mut self, keycode: KeyCode) {
+        if self.focus_popup {
+            // match self.popup.run(terminal) {
+            //     Some(transaction) => self.set_current_row(transaction),
+            //     None => (),
+            // }
         } else {
             match keycode {
                 KeyCode::Enter => {
-                    self.edit_popup = !self.edit_popup;
+                    self.focus_popup = !self.focus_popup;
                     self.popup = PopupForm::new(self.get_current_row());
                 }
                 KeyCode::Char('k') | KeyCode::Down => self.next_row(),
                 KeyCode::Char('l') | KeyCode::Up => self.previous_row(),
-                _ => {}
+                _ => (),
             }
         }
     }
 
-    pub fn draw(&mut self, frame: &mut Frame) {
-        let vertical = &Layout::vertical([Constraint::Min(5), Constraint::Length(4)]);
-        let rects = vertical.split(frame.area());
-
-        self.render_table(frame, rects[0]);
-        // self.render_scrollbar(frame, rects[0]);
-        self.render_footer(frame, rects[1]);
-        if self.edit_popup {
-            self.popup.render(frame);
-        }
-    }
-
-    pub fn render_table(&mut self, frame: &mut Frame, area: Rect) {
+    pub fn render(&mut self, frame: &mut Frame, area: Rect) {
         let header_style = Style::default()
             .fg(self.colors.header_fg)
             .bg(self.colors.header_bg);
@@ -216,22 +164,7 @@ impl TableComponent {
         .bg(self.colors.buffer_bg)
         .highlight_spacing(HighlightSpacing::Always)
         .block(block);
-        frame.render_stateful_widget(t, area, &mut self.state);
-    }
 
-    fn render_footer(&self, frame: &mut Frame, area: Rect) {
-        let info_footer = Paragraph::new(Text::from_iter(INFO_TEXT))
-            .style(
-                Style::new()
-                    .fg(self.colors.row_fg)
-                    .bg(self.colors.buffer_bg),
-            )
-            .centered()
-            .block(
-                Block::bordered()
-                    .border_type(BorderType::Double)
-                    .border_style(Style::new().fg(self.colors.footer_border_color)),
-            );
-        frame.render_widget(info_footer, area);
+        frame.render_stateful_widget(t, area, &mut self.state);
     }
 }

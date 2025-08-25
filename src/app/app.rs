@@ -1,22 +1,16 @@
 use color_eyre::Result;
-use itertools::Itertools;
+use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
     DefaultTerminal, Frame,
-    crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers},
-    layout::{Constraint, Flex, Layout, Margin, Rect},
-    style::{self, Color, Modifier, Style, Stylize},
-    text::Text,
-    widgets::{
-        Block, BorderType, Borders, Cell, Clear, HighlightSpacing, Paragraph, Row, Scrollbar,
-        ScrollbarOrientation, ScrollbarState, Table, TableState,
-    },
+    buffer::{self, Buffer},
+    layout::{Constraint, Layout, Rect},
+    widgets::{StatefulWidget, Widget},
 };
-use std::borrow::Cow;
-use strum::{Display, FromRepr, IntoEnumIterator};
+use strum::{Display, FromRepr};
 use strum_macros::EnumIter;
-use style::palette::tailwind;
 
 use crate::app::table::TableComponent;
+use crate::event::{AppEvent, EventHandler};
 use crate::models::Transaction;
 
 #[derive(Default, Clone, Copy, Display, FromRepr, EnumIter)]
@@ -42,7 +36,10 @@ impl CurrentTab {
     }
 }
 
-struct App {
+pub struct App {
+    running: bool,
+    counter: u8,
+    events: EventHandler,
     items: Vec<Transaction>,
     current_tab: CurrentTab,
     table: TableComponent,
@@ -52,6 +49,9 @@ struct App {
 impl App {
     fn new(transactions: Vec<Transaction>) -> Self {
         Self {
+            running: true,
+            counter: 0,
+            events: EventHandler::new(),
             table: TableComponent::new(&transactions),
             current_tab: CurrentTab::Table,
             items: transactions,
@@ -59,24 +59,38 @@ impl App {
         }
     }
 
-    fn run(mut self, mut terminal: DefaultTerminal) -> Result<()> {
-        loop {
-            terminal.draw(|frame| self.draw(frame))?;
-
-            if let Event::Key(key) = event::read()? {
-                if key.kind == KeyEventKind::Press {
-                    match key.code {
-                        KeyCode::Char('q') | KeyCode::Esc => return Ok(()),
-                        KeyCode::Char('l') | KeyCode::Right => self.next_tab(),
-                        KeyCode::Char('h') | KeyCode::Left => self.previous_tab(),
-                        keycode => match self.current_tab {
-                            CurrentTab::Home => (),
-                            CurrentTab::Table => self.table.run(terminal, &keycode),
-                        },
-                    }
+    pub async fn run(mut self, mut terminal: DefaultTerminal) -> Result<()> {
+        while self.running {
+            match self.events.next().await? {
+                AppEvent::Tick => {
+                    terminal.draw(|frame| self.draw(frame))?;
                 }
+                AppEvent::Crossterm(event) => match event {
+                    crossterm::event::Event::Key(key) => self.handle_key_events(key)?,
+                    _ => (),
+                },
+                AppEvent::Quit => self.quit(),
             }
         }
+
+        Ok(())
+    }
+
+    fn handle_key_events(&mut self, key_event: KeyEvent) -> color_eyre::Result<()> {
+        match key_event.code {
+            KeyCode::Char('q') | KeyCode::Esc => self.events.send(AppEvent::Quit),
+            KeyCode::Char(';') | KeyCode::Right => self.next_tab(),
+            KeyCode::Char('j') | KeyCode::Left => self.previous_tab(),
+            keycode => match self.current_tab {
+                CurrentTab::Home => (),
+                CurrentTab::Table => self.table.handle_key_events(keycode),
+            },
+        };
+        Ok(())
+    }
+
+    fn quit(&mut self) {
+        self.running = false;
     }
 
     pub fn next_tab(&mut self) {
@@ -88,20 +102,17 @@ impl App {
     }
 
     fn draw(&mut self, frame: &mut Frame) {
-        let vertical = &Layout::vertical([Constraint::Min(5), Constraint::Length(4)]);
-        let rects = vertical.split(frame.area());
-
         match self.current_tab {
-            CurrentTab::Table => self.table.draw(frame),
+            CurrentTab::Table => self.table.render(frame, frame.area()),
             CurrentTab::Home => (),
         }
     }
 }
 
-pub fn init_app(transactions: Vec<Transaction>) -> Result<()> {
+pub async fn init_app(transactions: Vec<Transaction>) -> Result<()> {
     color_eyre::install()?;
     let terminal = ratatui::init();
-    let app_result = App::new(transactions).run(terminal);
+    let app_result = App::new(transactions).run(terminal).await;
     ratatui::restore();
     app_result
 }

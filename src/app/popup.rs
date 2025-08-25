@@ -120,23 +120,24 @@ impl PopupForm {
     }
 
     pub fn run(&mut self, terminal: &DefaultTerminal) -> Option<Transaction> {
-        loop {
-            terminal
-                .draw(|frame| self.render(frame))
-                .expect("Error rendering");
-
-            if let Event::Key(key) = event::read().expect("Error reading keyboard") {
-                if key.kind == KeyEventKind::Press {
-                    match key.code {
-                        KeyCode::Char('q') | KeyCode::Esc => return None,
-                        KeyCode::Enter => {
-                            return Some(self.get_transaction());
-                        }
-                        keycode => self.on_key_press(&keycode),
-                    }
-                }
-            }
-        }
+        unimplemented!()
+        // loop {
+        //     terminal
+        //         .draw(|frame| self.render(frame))
+        //         .expect("Error rendering");
+        //
+        //     if let Event::Key(key) = event::read().expect("Error reading keyboard") {
+        //         if key.kind == KeyEventKind::Press {
+        //             match key.code {
+        //                 KeyCode::Char('q') | KeyCode::Esc => return None,
+        //                 KeyCode::Enter => {
+        //                     return Some(self.get_transaction());
+        //                 }
+        //                 keycode => self.on_key_press(&keycode),
+        //             }
+        //         }
+        //     }
+        // }
     }
 
     fn on_key_press(&mut self, keycode: &KeyCode) {

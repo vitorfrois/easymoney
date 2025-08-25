@@ -8,9 +8,11 @@ use std::str::FromStr;
 
 pub mod app;
 pub mod db;
+pub mod event;
 pub mod format;
 pub mod labeling;
 pub mod models;
+pub mod tui;
 
 fn read_csv(path: &fs::DirEntry) -> PolarsResult<DataFrame> {
     CsvReadOptions::default()
@@ -83,7 +85,8 @@ fn get_transactions_by_month(transactions: &Vec<models::Transaction>) -> HashMap
     monthly_totals.clone()
 }
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     let df = read_folder("../data".into()).expect("PathError");
     println!("{df}");
 
@@ -106,7 +109,7 @@ fn main() -> Result<()> {
         transaction.group = category_map.classify_title(&transaction.title);
     }
 
-    app::init_app(transactions);
+    let _ = app::init_app(transactions).await;
     // println!("First five transactions");
     // for i in 0..5 {
     //     println!("{}", transactions[i]);
