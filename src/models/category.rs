@@ -34,6 +34,20 @@ impl Category {
             Self::Other => Self::Housing,
         }
     }
+
+    pub fn previous(&self) -> Self {
+        match self {
+            Self::Housing => Self::Transportation,
+            Self::Transportation => Self::Food,
+            Self::Food => Self::Transportation,
+            Self::Supermarket => Self::Food,
+            Self::Savings => Self::Supermarket,
+            Self::Health => Self::Savings,
+            Self::Personal => Self::Health,
+            Self::Trips => Self::Personal,
+            Self::Other => Self::Housing,
+        }
+    }
 }
 
 impl fmt::Display for Category {

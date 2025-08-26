@@ -1,29 +1,35 @@
-use ratatui::DefaultTerminal;
+use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::Frame;
 use ratatui::buffer::Buffer;
-use ratatui::crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use ratatui::layout::{Constraint, Direction, Layout, Offset, Rect};
 use ratatui::style::{Color, Style, Stylize};
 use ratatui::text::Line;
-use ratatui::widgets::{Block, Borders, Widget};
+use ratatui::widgets::{Block, Borders, Clear, Paragraph, StatefulWidget, Widget};
+use strum::IntoEnumIterator;
 
 use crate::models::{Category, Transaction};
 
 struct StringField {
     label: &'static str,
     value: String,
+    max_length: usize,
 }
 
 impl StringField {
-    fn new(label: &'static str, value: &String) -> Self {
+    pub fn new(label: &'static str, value: &String, max_length: usize) -> Self {
         Self {
             label,
             value: value.clone(),
+            max_length,
         }
     }
-    fn on_key_press(&mut self, keycode: KeyCode) {
-        match keycode {
-            KeyCode::Char(c) => self.value.push(c),
+    pub fn handle_key_event(&mut self, key_event: KeyEvent) {
+        match key_event.code {
+            KeyCode::Char(c) => {
+                if self.value.len() < self.max_length {
+                    self.value.push(c);
+                }
+            }
             KeyCode::Backspace => {
                 self.value.pop();
             }
@@ -46,24 +52,47 @@ impl Widget for &StringField {
         .split(area);
         let label = Line::from_iter([self.label, ": "]).bold();
         label.render(layout[0], buf);
-        self.value.clone().render(layout[1], buf);
+        self.value
+            .clone()
+            .bg(Color::DarkGray)
+            .render(layout[1], buf);
     }
 }
 
 struct CategoryField {
     label: &'static str,
-    value: Category,
+    categories: Vec<Category>,
+    selected: Category,
 }
 
 impl CategoryField {
-    fn new(label: &'static str, value: Category) -> Self {
-        Self { label, value }
+    pub fn new(label: &'static str, value: Category) -> Self {
+        let categories: Vec<Category> = Category::iter().collect();
+        Self {
+            label,
+            categories,
+            selected: value,
+        }
     }
-    fn on_key_press(&mut self, keycode: KeyCode) {
-        match keycode {
-            KeyCode::Char(';') | KeyCode::Right => self.value = self.value.next(),
+
+    pub fn handle_key_event(&mut self, key_event: KeyEvent) {
+        match key_event.code {
+            KeyCode::Right | KeyCode::Char(';') => self.next(),
+            KeyCode::Left | KeyCode::Char('j') => self.previous(),
             _ => (),
         }
+    }
+
+    fn next(&mut self) {
+        self.selected = self.selected.next();
+    }
+
+    fn previous(&mut self) {
+        self.selected = self.selected.previous();
+    }
+
+    pub fn value(&self) -> Category {
+        self.selected.clone()
     }
 }
 
@@ -74,39 +103,94 @@ impl Widget for &CategoryField {
             Constraint::Fill(1),
         ])
         .split(area);
+
         let label = Line::from_iter([self.label, ": "]).bold();
         label.render(layout[0], buf);
-        self.value.clone().to_string().render(layout[1], buf);
+        let value = format!("< {} >", self.value());
+        value
+            .clone()
+            .to_string()
+            .bg(Color::DarkGray)
+            .render(layout[1], buf);
+    }
+}
+
+enum ButtonState {
+    Selected,
+    NotSelected,
+}
+
+struct Button {
+    label: &'static str,
+    state: ButtonState,
+}
+
+impl Button {
+    pub fn new(label: &'static str) -> Self {
+        Self {
+            label,
+            state: ButtonState::NotSelected,
+        }
+    }
+
+    pub fn handle_key_event(&mut self, key_event: KeyEvent) -> bool {
+        if key_event.code == KeyCode::Enter {
+            return true;
+        };
+        return false;
+    }
+}
+
+impl StatefulWidget for &Button {
+    type State = ButtonState;
+
+    fn render(self, area: Rect, buf: &mut Buffer, state: &mut ButtonState) {
+        let label = Line::from(self.label).bold();
+        let background_color = match state {
+            ButtonState::NotSelected => Color::Black,
+            ButtonState::Selected => Color::DarkGray,
+        };
+        let button = Paragraph::new(label)
+            .alignment(ratatui::layout::Alignment::Center)
+            .block(Block::new().borders(Borders::ALL))
+            .bg(background_color);
+        button.render(area, buf);
     }
 }
 
 #[derive(Default, PartialEq, Eq)]
-enum Focus {
+enum PopupFocus {
     #[default]
     Title,
     Category,
+    Ok,
 }
 
-impl Focus {
+impl PopupFocus {
     const fn next(&self) -> Self {
         match self {
             Self::Title => Self::Category,
-            Self::Category => Self::Title,
+            Self::Category => Self::Ok,
+            Self::Ok => Self::Title,
         }
     }
 }
 
 pub struct PopupForm {
-    focus: Focus,
+    focus: PopupFocus,
     title: StringField,
     category: CategoryField,
+    confirm: Button,
     transaction: Transaction,
 }
 
 impl PopupForm {
-    pub fn new(transaction: &Transaction) -> Self {
+    pub fn new(transaction: Transaction) -> Self {
+        let title_label = "Title";
+        let max_len = 40 - 2 - 2 - (title_label.len() + 2);
+
         PopupForm {
-            title: StringField::new("Title", &transaction.title),
+            title: StringField::new(title_label, &transaction.title, max_len),
             category: CategoryField::new(
                 "Category",
                 match &transaction.group {
@@ -114,43 +198,37 @@ impl PopupForm {
                     None => Category::Other,
                 },
             ),
-            focus: Focus::default(),
-            transaction: transaction.clone(),
+            confirm: Button::new("Ok"),
+            focus: PopupFocus::default(),
+            transaction: transaction,
         }
     }
 
-    pub fn run(&mut self, terminal: &DefaultTerminal) -> Option<Transaction> {
-        unimplemented!()
-        // loop {
-        //     terminal
-        //         .draw(|frame| self.render(frame))
-        //         .expect("Error rendering");
-        //
-        //     if let Event::Key(key) = event::read().expect("Error reading keyboard") {
-        //         if key.kind == KeyEventKind::Press {
-        //             match key.code {
-        //                 KeyCode::Char('q') | KeyCode::Esc => return None,
-        //                 KeyCode::Enter => {
-        //                     return Some(self.get_transaction());
-        //                 }
-        //                 keycode => self.on_key_press(&keycode),
-        //             }
-        //         }
-        //     }
-        // }
+    pub fn handle_key_event(&mut self, key_event: KeyEvent) -> Option<Transaction> {
+        if key_event.code == KeyCode::Tab {
+            self.next_field();
+            return None;
+        }
+        match self.focus {
+            PopupFocus::Title => self.title.handle_key_event(key_event),
+            PopupFocus::Category => self.category.handle_key_event(key_event),
+            PopupFocus::Ok => {
+                if self.confirm.handle_key_event(key_event) {
+                    return Some(self.get_transaction());
+                }
+            }
+        }
+        return None;
     }
 
-    fn on_key_press(&mut self, keycode: &KeyCode) {
-        match keycode {
-            KeyCode::Tab => self.focus = self.focus.next(),
-            _ => (),
-        }
+    fn next_field(&mut self) {
+        self.focus = self.focus.next();
     }
 
     pub fn get_transaction(&self) -> Transaction {
         let mut transaction = self.transaction.clone();
         transaction.title = self.title.value.clone();
-        transaction.group = Some(self.category.value.clone());
+        transaction.group = Some(self.category.value());
         transaction
     }
 
@@ -162,21 +240,46 @@ impl PopupForm {
 
         let area = centered_rect(40, 10, frame.area());
 
+        frame.render_widget(Clear, area);
         frame.render_widget(popup_block, area);
 
         let layout = Layout::default()
             .direction(Direction::Vertical)
             .margin(1)
-            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+            .constraints([
+                Constraint::Length(1),
+                Constraint::Length(1),
+                Constraint::Length(3),
+            ])
             .split(area);
 
         frame.render_widget(&self.title, layout[0]);
         frame.render_widget(&self.category, layout[1]);
 
+        let button_area = Layout::horizontal([
+            Constraint::Fill(1),
+            Constraint::Length(10),
+            Constraint::Fill(1),
+        ])
+        .split(layout[2])[1];
+
+        match self.focus {
+            PopupFocus::Ok => {
+                frame.render_stateful_widget(&self.confirm, button_area, &mut ButtonState::Selected)
+            }
+            _ => frame.render_stateful_widget(
+                &self.confirm,
+                button_area,
+                &mut ButtonState::NotSelected,
+            ),
+        }
+
         let cursor_position = match self.focus {
-            Focus::Title => layout[0].offset(self.title.cursor_offset()),
-            Focus::Category => layout[1],
+            PopupFocus::Title => layout[0].offset(self.title.cursor_offset()),
+            PopupFocus::Category => layout[1],
+            PopupFocus::Ok => button_area,
         };
+
         frame.set_cursor_position(cursor_position);
     }
 }
@@ -186,7 +289,7 @@ fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Percentage((100 - percent_y) / 2),
-            Constraint::Percentage(percent_y),
+            Constraint::Min(8),
             Constraint::Percentage((100 - percent_y) / 2),
         ])
         .split(r);
@@ -195,8 +298,9 @@ fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
         .direction(Direction::Horizontal)
         .constraints([
             Constraint::Percentage((100 - percent_x) / 2),
-            Constraint::Percentage(percent_x),
+            Constraint::Min(40),
             Constraint::Percentage((100 - percent_x) / 2),
         ])
-        .split(popup_layout[1])[1] // Return the middle chunk
+        .split(popup_layout[1])[1]
 }
+

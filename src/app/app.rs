@@ -38,6 +38,7 @@ impl CurrentTab {
 
 pub struct App {
     running: bool,
+    has_changed: bool,
     counter: u8,
     events: EventHandler,
     items: Vec<Transaction>,
@@ -50,6 +51,7 @@ impl App {
     fn new(transactions: Vec<Transaction>) -> Self {
         Self {
             running: true,
+            has_changed: true,
             counter: 0,
             events: EventHandler::new(),
             table: TableComponent::new(&transactions),
@@ -63,10 +65,16 @@ impl App {
         while self.running {
             match self.events.next().await? {
                 AppEvent::Tick => {
-                    terminal.draw(|frame| self.draw(frame))?;
+                    if self.has_changed {
+                        terminal.draw(|frame| self.draw(frame))?;
+                        self.has_changed = false;
+                    }
                 }
                 AppEvent::Crossterm(event) => match event {
-                    crossterm::event::Event::Key(key) => self.handle_key_events(key)?,
+                    crossterm::event::Event::Key(key) => {
+                        self.handle_key_events(key)?;
+                        self.has_changed = true;
+                    }
                     _ => (),
                 },
                 AppEvent::Quit => self.quit(),
@@ -77,13 +85,18 @@ impl App {
     }
 
     fn handle_key_events(&mut self, key_event: KeyEvent) -> color_eyre::Result<()> {
+        if self.table.is_blocking() {
+            self.table.handle_key_events(key_event);
+            return Ok(());
+        }
+
         match key_event.code {
             KeyCode::Char('q') | KeyCode::Esc => self.events.send(AppEvent::Quit),
             KeyCode::Char(';') | KeyCode::Right => self.next_tab(),
             KeyCode::Char('j') | KeyCode::Left => self.previous_tab(),
-            keycode => match self.current_tab {
+            _ => match self.current_tab {
                 CurrentTab::Home => (),
-                CurrentTab::Table => self.table.handle_key_events(keycode),
+                CurrentTab::Table => self.table.handle_key_events(key_event),
             },
         };
         Ok(())

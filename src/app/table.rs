@@ -1,4 +1,4 @@
-use crossterm::event::KeyCode;
+use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::Frame;
 use ratatui::style::palette::tailwind;
 use ratatui::widgets::StatefulWidget;
@@ -49,7 +49,7 @@ impl TableComponent {
             colors: TableColors::new(&PALETTES[0]),
             items: transactions.to_vec(),
             focus_popup: false,
-            popup: PopupForm::new(&transactions[0]),
+            popup: PopupForm::new(transactions[0].clone()),
             footer: Footer::new(),
         }
     }
@@ -82,24 +82,35 @@ impl TableComponent {
         self.state.select(Some(i));
     }
 
-    pub fn get_current_row(&mut self) -> &Transaction {
-        &self.items[self.state.selected().expect("Line number")]
+    pub fn get_current_row(&self) -> Transaction {
+        self.items[self.state.selected().expect("Line number")].clone()
     }
 
     pub fn set_current_row(&mut self, transaction: Transaction) {
         self.items[self.state.selected().expect("Line number")] = transaction;
     }
 
-    pub fn handle_key_events(&mut self, keycode: KeyCode) {
+    pub fn is_blocking(&self) -> bool {
+        self.focus_popup
+    }
+
+    pub fn toggle_popup(&mut self) {
+        self.focus_popup = !self.focus_popup;
+    }
+
+    pub fn handle_key_events(&mut self, key_event: KeyEvent) {
         if self.focus_popup {
-            // match self.popup.run(terminal) {
-            //     Some(transaction) => self.set_current_row(transaction),
-            //     None => (),
-            // }
+            match self.popup.handle_key_event(key_event) {
+                Some(transaction) => {
+                    self.set_current_row(transaction);
+                    self.toggle_popup();
+                }
+                None => (),
+            }
         } else {
-            match keycode {
+            match key_event.code {
                 KeyCode::Enter => {
-                    self.focus_popup = !self.focus_popup;
+                    self.toggle_popup();
                     self.popup = PopupForm::new(self.get_current_row());
                 }
                 KeyCode::Char('k') | KeyCode::Down => self.next_row(),
@@ -166,5 +177,9 @@ impl TableComponent {
         .block(block);
 
         frame.render_stateful_widget(t, area, &mut self.state);
+
+        if self.focus_popup {
+            self.popup.render(frame);
+        }
     }
 }
