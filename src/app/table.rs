@@ -10,11 +10,12 @@ use ratatui::{
     widgets::{Block, BorderType, Cell, HighlightSpacing, Paragraph, Row, Table, TableState},
 };
 use std::borrow::Cow;
+use std::collections::HashMap;
 
 use crate::app::color::{PALETTES, TableColors};
 use crate::app::footer::Footer;
 use crate::app::popup::PopupForm;
-use crate::models::Transaction;
+use crate::models::{Category, Transaction};
 
 impl Transaction {
     fn ref_array(&self) -> [Cow<str>; 5] {
@@ -39,6 +40,8 @@ pub struct TableComponent {
     colors: TableColors,
     focus_popup: bool,
     popup: PopupForm,
+    title_map: HashMap<String, String>,
+    category_map: HashMap<String, Category>,
     footer: Footer,
 }
 
@@ -50,6 +53,8 @@ impl TableComponent {
             items: transactions.to_vec(),
             focus_popup: false,
             popup: PopupForm::new(transactions[0].clone()),
+            title_map: HashMap::new(),
+            category_map: HashMap::new(),
             footer: Footer::new(),
         }
     }
@@ -86,8 +91,56 @@ impl TableComponent {
         self.items[self.state.selected().expect("Line number")].clone()
     }
 
-    pub fn set_current_row(&mut self, transaction: Transaction) {
-        self.items[self.state.selected().expect("Line number")] = transaction;
+    pub fn set_current_row(&mut self, transaction: &Transaction) {
+        match transaction.group.clone() {
+            Some(category) => {
+                self.category_map
+                    .insert(transaction.title.clone(), category);
+            }
+            None => (),
+        }
+
+        let item_title = self.items[self.state.selected().expect("Line number")]
+            .title
+            .clone();
+
+        self.items[self.state.selected().expect("Line number")] = transaction.clone();
+
+        for (key, value) in &self.title_map.clone() {
+            if *value == item_title {
+                self.title_map
+                    .insert(key.to_string().clone(), transaction.title.clone());
+                return;
+            }
+        }
+
+        self.title_map.insert(item_title, transaction.title.clone());
+        self.update_transactions();
+        // self.update_db();
+    }
+
+    fn update_transactions(&mut self) {
+        for transaction in self.items.iter_mut() {
+            match self.category_map.get(&transaction.title) {
+                Some(category) => {
+                    transaction.group = Some(category.clone());
+                }
+                None => (),
+            }
+
+            match self.title_map.get(&transaction.title) {
+                Some(title) => {
+                    transaction.title = title.clone();
+                }
+                None => (),
+            }
+        }
+    }
+
+    fn update_db(&self) {
+        // title - new title table
+        // new title - category table
+        unimplemented!()
     }
 
     pub fn is_blocking(&self) -> bool {
@@ -102,8 +155,8 @@ impl TableComponent {
         if self.focus_popup {
             match self.popup.handle_key_event(key_event) {
                 Some(transaction) => {
-                    self.set_current_row(transaction);
                     self.toggle_popup();
+                    self.set_current_row(&transaction);
                 }
                 None => (),
             }

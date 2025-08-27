@@ -37,15 +37,15 @@ impl Category {
 
     pub fn previous(&self) -> Self {
         match self {
-            Self::Housing => Self::Transportation,
-            Self::Transportation => Self::Food,
+            Self::Housing => Self::Other,
+            Self::Transportation => Self::Housing,
             Self::Food => Self::Transportation,
             Self::Supermarket => Self::Food,
             Self::Savings => Self::Supermarket,
             Self::Health => Self::Savings,
             Self::Personal => Self::Health,
             Self::Trips => Self::Personal,
-            Self::Other => Self::Housing,
+            Self::Other => Self::Trips,
         }
     }
 }

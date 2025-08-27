@@ -5,7 +5,7 @@ use std::result::Result;
 use tokio::sync::mpsc;
 use tokio::time::Duration;
 
-const TICK_FPS: f64 = 15.0;
+const TICK_FPS: f64 = 60.0;
 
 #[derive(Clone, Debug)]
 pub enum AppEvent {

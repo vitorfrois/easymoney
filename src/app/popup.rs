@@ -43,8 +43,9 @@ impl StringField {
     }
 }
 
-impl Widget for &StringField {
-    fn render(self, area: Rect, buf: &mut Buffer) {
+impl StatefulWidget for &StringField {
+    type State = PopupFocus;
+    fn render(self, area: Rect, buf: &mut Buffer, _state: &mut PopupFocus) {
         let layout = Layout::horizontal([
             Constraint::Length(self.label.len() as u16 + 2),
             Constraint::Fill(1),
@@ -52,25 +53,20 @@ impl Widget for &StringField {
         .split(area);
         let label = Line::from_iter([self.label, ": "]).bold();
         label.render(layout[0], buf);
-        self.value
-            .clone()
-            .bg(Color::DarkGray)
-            .render(layout[1], buf);
+        let bg = Color::Black;
+        self.value.clone().bg(bg).render(layout[1], buf);
     }
 }
 
 struct CategoryField {
     label: &'static str,
-    categories: Vec<Category>,
     selected: Category,
 }
 
 impl CategoryField {
     pub fn new(label: &'static str, value: Category) -> Self {
-        let categories: Vec<Category> = Category::iter().collect();
         Self {
             label,
-            categories,
             selected: value,
         }
     }
@@ -96,8 +92,9 @@ impl CategoryField {
     }
 }
 
-impl Widget for &CategoryField {
-    fn render(self, area: Rect, buf: &mut Buffer) {
+impl StatefulWidget for &CategoryField {
+    type State = PopupFocus;
+    fn render(self, area: Rect, buf: &mut Buffer, state: &mut PopupFocus) {
         let layout = Layout::horizontal([
             Constraint::Length(self.label.len() as u16 + 2),
             Constraint::Fill(1),
@@ -107,30 +104,21 @@ impl Widget for &CategoryField {
         let label = Line::from_iter([self.label, ": "]).bold();
         label.render(layout[0], buf);
         let value = format!("< {} >", self.value());
-        value
-            .clone()
-            .to_string()
-            .bg(Color::DarkGray)
-            .render(layout[1], buf);
+        let bg = match state {
+            PopupFocus::Category => Color::DarkGray,
+            _ => Color::Black,
+        };
+        value.clone().to_string().bg(bg).render(layout[1], buf);
     }
-}
-
-enum ButtonState {
-    Selected,
-    NotSelected,
 }
 
 struct Button {
     label: &'static str,
-    state: ButtonState,
 }
 
 impl Button {
     pub fn new(label: &'static str) -> Self {
-        Self {
-            label,
-            state: ButtonState::NotSelected,
-        }
+        Self { label }
     }
 
     pub fn handle_key_event(&mut self, key_event: KeyEvent) -> bool {
@@ -142,23 +130,23 @@ impl Button {
 }
 
 impl StatefulWidget for &Button {
-    type State = ButtonState;
+    type State = PopupFocus;
 
-    fn render(self, area: Rect, buf: &mut Buffer, state: &mut ButtonState) {
+    fn render(self, area: Rect, buf: &mut Buffer, state: &mut PopupFocus) {
         let label = Line::from(self.label).bold();
-        let background_color = match state {
-            ButtonState::NotSelected => Color::Black,
-            ButtonState::Selected => Color::DarkGray,
+        let bg = match state {
+            PopupFocus::Ok => Color::DarkGray,
+            _ => Color::Black,
         };
         let button = Paragraph::new(label)
             .alignment(ratatui::layout::Alignment::Center)
             .block(Block::new().borders(Borders::ALL))
-            .bg(background_color);
+            .bg(bg);
         button.render(area, buf);
     }
 }
 
-#[derive(Default, PartialEq, Eq)]
+#[derive(Clone, Default, PartialEq, Eq)]
 enum PopupFocus {
     #[default]
     Title,
@@ -180,14 +168,14 @@ pub struct PopupForm {
     focus: PopupFocus,
     title: StringField,
     category: CategoryField,
-    confirm: Button,
+    button: Button,
     transaction: Transaction,
 }
 
 impl PopupForm {
     pub fn new(transaction: Transaction) -> Self {
         let title_label = "Title";
-        let max_len = 40 - 2 - 2 - (title_label.len() + 2);
+        let max_len = 60 - 2 - 2 - (title_label.len() + 2);
 
         PopupForm {
             title: StringField::new(title_label, &transaction.title, max_len),
@@ -198,7 +186,7 @@ impl PopupForm {
                     None => Category::Other,
                 },
             ),
-            confirm: Button::new("Ok"),
+            button: Button::new("Ok"),
             focus: PopupFocus::default(),
             transaction: transaction,
         }
@@ -213,14 +201,24 @@ impl PopupForm {
             PopupFocus::Title => self.title.handle_key_event(key_event),
             PopupFocus::Category => self.category.handle_key_event(key_event),
             PopupFocus::Ok => {
-                if self.confirm.handle_key_event(key_event) {
-                    return Some(self.get_transaction());
+                if self.button.handle_key_event(key_event) {
+                    if self.validate_title() {
+                        return Some(self.get_transaction());
+                    } else {
+                        return None;
+                    }
                 }
             }
         }
         return None;
     }
 
+    fn validate_title(&self) -> bool {
+        if self.title.value.len() < 3 {
+            return false;
+        }
+        true
+    }
     fn next_field(&mut self) {
         self.focus = self.focus.next();
     }
@@ -250,11 +248,9 @@ impl PopupForm {
                 Constraint::Length(1),
                 Constraint::Length(1),
                 Constraint::Length(3),
+                Constraint::Length(1),
             ])
             .split(area);
-
-        frame.render_widget(&self.title, layout[0]);
-        frame.render_widget(&self.category, layout[1]);
 
         let button_area = Layout::horizontal([
             Constraint::Fill(1),
@@ -263,24 +259,29 @@ impl PopupForm {
         ])
         .split(layout[2])[1];
 
-        match self.focus {
-            PopupFocus::Ok => {
-                frame.render_stateful_widget(&self.confirm, button_area, &mut ButtonState::Selected)
-            }
-            _ => frame.render_stateful_widget(
-                &self.confirm,
-                button_area,
-                &mut ButtonState::NotSelected,
-            ),
-        }
+        frame.render_stateful_widget(&self.title, layout[0], &mut self.focus.clone());
+        frame.render_stateful_widget(&self.category, layout[1], &mut self.focus.clone());
+        frame.render_stateful_widget(&self.button, button_area, &mut self.focus.clone());
 
-        let cursor_position = match self.focus {
-            PopupFocus::Title => layout[0].offset(self.title.cursor_offset()),
-            PopupFocus::Category => layout[1],
-            PopupFocus::Ok => button_area,
+        let message = match !self.validate_title() {
+            true => Paragraph::new("Use 3 or more chars")
+                .fg(Color::Red)
+                .centered(),
+            false => Paragraph::new(
+                "Use Tab to navigate between fields. Use arrows to choose a Category.",
+            )
+            .fg(Color::White)
+            .centered(),
         };
+        frame.render_widget(message, layout[3]);
 
-        frame.set_cursor_position(cursor_position);
+        match self.focus {
+            PopupFocus::Title => {
+                let cursor_position = layout[0].offset(self.title.cursor_offset());
+                frame.set_cursor_position(cursor_position);
+            }
+            _ => (),
+        };
     }
 }
 
@@ -303,4 +304,3 @@ fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
         ])
         .split(popup_layout[1])[1]
 }
-
