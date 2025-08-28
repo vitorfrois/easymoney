@@ -158,6 +158,5 @@ pub async fn init_app(transactions: Vec<NewTransaction>) -> Result<()> {
     let app = App::new(transactions);
     let transactions = app.run(terminal).await;
     ratatui::restore();
-    println!("{:?}", transactions);
     Ok(())
 }

@@ -1,5 +1,6 @@
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::Frame;
+use ratatui::layout::Direction;
 use ratatui::style::palette::tailwind;
 use ratatui::widgets::StatefulWidget;
 use ratatui::{
@@ -47,7 +48,7 @@ enum SortOptions {
 }
 
 #[derive(PartialEq, Eq, Clone, Copy)]
-enum TableMode {
+pub enum TableMode {
     Popup,
     Normal,
     Ordering,
@@ -213,16 +214,23 @@ impl TableComponent {
     }
 
     pub fn render(&mut self, frame: &mut Frame, area: Rect) {
+        let footer_size = match self.mode {
+            TableMode::Normal => 3,
+            TableMode::Ordering => 9,
+            TableMode::Popup => 0,
+        };
+
+        let layout = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Fill(1), Constraint::Length(footer_size)])
+            .split(area);
+
         let header_style = Style::default()
             .fg(self.colors.header_fg)
             .bg(self.colors.header_bg);
         let selected_row_style = Style::default()
             .add_modifier(Modifier::REVERSED)
             .fg(self.colors.selected_row_style_fg);
-        // let selected_col_style = Style::default().fg(self.colors.selected_column_style_fg);
-        // let selected_cell_style = Style::default()
-        //     .add_modifier(Modifier::REVERSED)
-        //     .fg(self.colors.selected_cell_style_fg);
 
         let header = ["", "Date", "Title", "Amount (R$)", "Kind", "Group"]
             .into_iter()
@@ -261,10 +269,14 @@ impl TableComponent {
         .highlight_spacing(HighlightSpacing::Always)
         .block(block);
 
-        frame.render_stateful_widget(t, area, &mut self.state);
+        frame.render_stateful_widget(t, layout[0], &mut self.state);
+        frame.render_stateful_widget(&self.footer, layout[1], &mut self.mode);
 
-        if self.mode == TableMode::Popup {
-            self.popup.render(frame);
+        match self.mode {
+            TableMode::Popup => {
+                self.popup.render(frame);
+            }
+            _ => (),
         }
     }
 }
