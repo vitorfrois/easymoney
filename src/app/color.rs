@@ -2,7 +2,7 @@ use ratatui::style::Color;
 use ratatui::style::palette::tailwind;
 
 pub const PALETTES: [tailwind::Palette; 4] = [
-    tailwind::BLUE,
+    tailwind::ZINC,
     tailwind::EMERALD,
     tailwind::INDIGO,
     tailwind::RED,

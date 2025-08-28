@@ -1,8 +1,9 @@
-use crate::labeling::CategoryMap;
+use crate::labeling::FieldMap;
 use crate::models::Category;
 use crate::models::{NewTransaction, Transaction};
 use dirs_next::data_dir;
 use rusqlite::{Connection, Result};
+use std::collections::HashMap;
 use std::fs;
 use std::str::FromStr;
 
@@ -28,6 +29,7 @@ impl Database {
     pub fn initialize_database(&self) -> Result<()> {
         let _ = self.create_transactions();
         let _ = self.create_categories();
+        let _ = self.create_titlemaps();
         Ok(())
     }
 
@@ -102,7 +104,7 @@ impl Database {
         Ok(())
     }
 
-    pub fn insert_categories(&self, categories: CategoryMap) -> Result<()> {
+    pub fn insert_categories(&self, categories: FieldMap<Category>) -> Result<()> {
         for (title, category) in categories.map {
             self.insert_category(title, category);
         }
@@ -118,7 +120,7 @@ impl Database {
             .ok();
     }
 
-    pub fn get_categories(&self) -> Result<CategoryMap> {
+    pub fn get_categories(&self) -> Result<FieldMap<Category>> {
         let mut statement = self
             .conn
             .prepare("SELECT title, category FROM categories")?;
@@ -128,8 +130,52 @@ impl Database {
                 let category_str: String = row.get(1)?;
                 Ok((row.get(0)?, Category::from_str(&category_str)?))
             })?
-            .collect::<Result<Vec<(String, Category)>, _>>()?;
+            .collect::<Result<HashMap<String, Category>, _>>()?;
 
-        Ok(CategoryMap { map })
+        if map.len() == 0 {
+            return Ok(FieldMap::<Category>::new());
+        }
+
+        Ok(FieldMap { map })
+    }
+
+    fn create_titlemaps(&self) -> Result<()> {
+        self.conn.execute(
+            "CREATE TABLE IF NOT EXISTS titlemaps (
+                title       TEXT,
+                new_title   TEXT, 
+                PRIMARY KEY (title, new_title)
+            )",
+            (),
+        )?;
+        Ok(())
+    }
+
+    pub fn insert_titlemaps(&self, categories: FieldMap<String>) -> Result<()> {
+        for (title, category) in categories.map {
+            self.insert_titlemap(title, category);
+        }
+        Ok(())
+    }
+
+    pub fn insert_titlemap(&self, title: String, category: String) {
+        self.conn
+            .execute(
+                "INSERT OR IGNORE INTO titlemaps (title, new_title) VALUES (?1, ?2)",
+                (&title, &category),
+            )
+            .ok();
+    }
+
+    pub fn get_titlemaps(&self) -> Result<FieldMap<String>> {
+        let mut statement = self
+            .conn
+            .prepare("SELECT title, new_title FROM titlemaps")?;
+
+        let map = statement
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+            .collect::<Result<HashMap<String, String>, _>>()?;
+
+        Ok(FieldMap { map })
     }
 }

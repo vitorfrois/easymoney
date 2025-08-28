@@ -10,21 +10,24 @@ use ratatui::{
     widgets::{Block, BorderType, Cell, HighlightSpacing, Paragraph, Row, Table, TableState},
 };
 use std::borrow::Cow;
+use std::cmp::Ordering;
 use std::collections::HashMap;
 
 use crate::app::color::{PALETTES, TableColors};
 use crate::app::footer::Footer;
 use crate::app::popup::PopupForm;
+use crate::labeling::FieldMap;
 use crate::models::{Category, Transaction};
 
 impl Transaction {
-    fn ref_array(&self) -> [Cow<str>; 5] {
+    fn ref_array(&self, index: u32) -> [Cow<str>; 6] {
         let group_string = match &self.group {
             Some(s) => s.to_string(),
             None => "N/A".to_string(),
         };
         let amount_string = format!("{:.2}", self.amount);
         [
+            Cow::Owned(index.to_string()),
             Cow::Owned(self.date.to_string()),
             Cow::Borrowed(&self.title),
             Cow::Owned(amount_string),
@@ -34,15 +37,31 @@ impl Transaction {
     }
 }
 
+enum SortOptions {
+    DateAsc,
+    DateDesc,
+    TitleAsc,
+    TitleDesc,
+    AmountAsc,
+    AmountDesc,
+}
+
+#[derive(PartialEq, Eq, Clone, Copy)]
+enum TableMode {
+    Popup,
+    Normal,
+    Ordering,
+}
+
 pub struct TableComponent {
     state: TableState,
-    items: Vec<Transaction>,
+    pub items: Vec<Transaction>,
     colors: TableColors,
-    focus_popup: bool,
     popup: PopupForm,
-    title_map: HashMap<String, String>,
-    category_map: HashMap<String, Category>,
+    mode: TableMode,
     footer: Footer,
+    title_map: FieldMap<String>,
+    category_map: FieldMap<Category>,
 }
 
 impl TableComponent {
@@ -51,12 +70,28 @@ impl TableComponent {
             state: TableState::default().with_selected(0),
             colors: TableColors::new(&PALETTES[0]),
             items: transactions.to_vec(),
-            focus_popup: false,
+            mode: TableMode::Normal,
+            title_map: FieldMap::<String>::new(),
+            category_map: FieldMap::<Category>::new(),
             popup: PopupForm::new(transactions[0].clone()),
-            title_map: HashMap::new(),
-            category_map: HashMap::new(),
             footer: Footer::new(),
         }
+    }
+
+    pub fn set_categories(&mut self, category_map: FieldMap<Category>) {
+        self.category_map = category_map;
+    }
+
+    pub fn get_categories(&self) -> FieldMap<Category> {
+        self.category_map.clone()
+    }
+
+    pub fn set_titlemap(&mut self, title_map: FieldMap<String>) {
+        self.title_map = title_map;
+    }
+
+    pub fn get_titlemap(&self) -> FieldMap<String> {
+        self.title_map.clone()
     }
 
     pub fn next_row(&mut self) {
@@ -92,13 +127,8 @@ impl TableComponent {
     }
 
     pub fn set_current_row(&mut self, transaction: &Transaction) {
-        match transaction.group.clone() {
-            Some(category) => {
-                self.category_map
-                    .insert(transaction.title.clone(), category);
-            }
-            None => (),
-        }
+        self.category_map
+            .insert(&transaction.title, &transaction.group);
 
         let item_title = self.items[self.state.selected().expect("Line number")]
             .title
@@ -106,69 +136,78 @@ impl TableComponent {
 
         self.items[self.state.selected().expect("Line number")] = transaction.clone();
 
-        for (key, value) in &self.title_map.clone() {
+        for (key, value) in &self.title_map.map.clone() {
             if *value == item_title {
                 self.title_map
-                    .insert(key.to_string().clone(), transaction.title.clone());
-                return;
+                    .insert(&key.to_string(), &Some(transaction.title.clone()));
             }
         }
 
-        self.title_map.insert(item_title, transaction.title.clone());
+        self.title_map
+            .insert(&item_title, &Some(transaction.title.clone()));
         self.update_transactions();
-        // self.update_db();
     }
 
-    fn update_transactions(&mut self) {
+    pub fn update_transactions(&mut self) {
         for transaction in self.items.iter_mut() {
-            match self.category_map.get(&transaction.title) {
-                Some(category) => {
-                    transaction.group = Some(category.clone());
-                }
-                None => (),
-            }
-
             match self.title_map.get(&transaction.title) {
                 Some(title) => {
                     transaction.title = title.clone();
                 }
                 None => (),
             }
+
+            transaction.group = self.category_map.get(&transaction.title);
         }
     }
 
-    fn update_db(&self) {
-        // title - new title table
-        // new title - category table
-        unimplemented!()
+    fn sort_items(&mut self, sort_option: SortOptions) {
+        let sort_closure: fn(&Transaction, &Transaction) -> Ordering = match sort_option {
+            SortOptions::DateAsc => |a, b| a.date.cmp(&b.date),
+            SortOptions::DateDesc => |a, b| b.date.cmp(&a.date),
+            SortOptions::TitleAsc => |a, b| a.title.cmp(&b.title),
+            SortOptions::TitleDesc => |a, b| b.title.cmp(&a.title),
+            SortOptions::AmountAsc => |a, b| a.amount.partial_cmp(&b.amount).unwrap(),
+            SortOptions::AmountDesc => |a, b| b.amount.partial_cmp(&a.amount).unwrap(),
+        };
+        self.items.sort_by(sort_closure);
+        self.state.select_first();
     }
 
     pub fn is_blocking(&self) -> bool {
-        self.focus_popup
-    }
-
-    pub fn toggle_popup(&mut self) {
-        self.focus_popup = !self.focus_popup;
+        self.mode != TableMode::Normal
     }
 
     pub fn handle_key_events(&mut self, key_event: KeyEvent) {
-        if self.focus_popup {
-            match self.popup.handle_key_event(key_event) {
+        match self.mode {
+            TableMode::Popup => match self.popup.handle_key_event(key_event) {
                 Some(transaction) => {
-                    self.toggle_popup();
                     self.set_current_row(&transaction);
+                    self.mode = TableMode::Normal;
                 }
                 None => (),
-            }
-        } else {
-            match key_event.code {
+            },
+            TableMode::Normal => match key_event.code {
                 KeyCode::Enter => {
-                    self.toggle_popup();
+                    self.mode = TableMode::Popup;
                     self.popup = PopupForm::new(self.get_current_row());
                 }
                 KeyCode::Char('k') | KeyCode::Down => self.next_row(),
                 KeyCode::Char('l') | KeyCode::Up => self.previous_row(),
+                KeyCode::Char('o') => self.mode = TableMode::Ordering,
                 _ => (),
+            },
+            TableMode::Ordering => {
+                match key_event.code {
+                    KeyCode::Char('d') => self.sort_items(SortOptions::DateAsc),
+                    KeyCode::Char('D') => self.sort_items(SortOptions::DateDesc),
+                    KeyCode::Char('t') => self.sort_items(SortOptions::TitleAsc),
+                    KeyCode::Char('T') => self.sort_items(SortOptions::TitleDesc),
+                    KeyCode::Char('a') => self.sort_items(SortOptions::AmountAsc),
+                    KeyCode::Char('A') => self.sort_items(SortOptions::AmountDesc),
+                    _ => (),
+                }
+                self.mode = TableMode::Normal;
             }
         }
     }
@@ -185,29 +224,22 @@ impl TableComponent {
         //     .add_modifier(Modifier::REVERSED)
         //     .fg(self.colors.selected_cell_style_fg);
 
-        let header = ["Date", "Title", "Amount (R$)", "Kind", "Group"]
+        let header = ["", "Date", "Title", "Amount (R$)", "Kind", "Group"]
             .into_iter()
             .map(Cell::from)
             .collect::<Row>()
             .style(header_style)
             .height(1);
         let rows = self.items.iter().enumerate().map(|(i, data)| {
-            let color = match i % 2 {
-                0 => self.colors.normal_row_color,
-                _ => self.colors.alt_row_color,
-            };
-            let item = data.ref_array();
-            item.into_iter()
-                .map(Cell::from)
-                .collect::<Row>()
-                // .style(Style::new().fg(self.colors.row_fg).bg(color))
-                .height(1)
+            let item = data.ref_array(i as u32);
+            item.into_iter().map(Cell::from).collect::<Row>().height(1)
         });
         let bar = " █ ";
         let block = Block::bordered().title("Transactions");
         let t = Table::new(
             rows,
             [
+                Constraint::Max(5),
                 Constraint::Length(12),
                 Constraint::Min(20),
                 Constraint::Length(12),
@@ -231,7 +263,7 @@ impl TableComponent {
 
         frame.render_stateful_widget(t, area, &mut self.state);
 
-        if self.focus_popup {
+        if self.mode == TableMode::Popup {
             self.popup.render(frame);
         }
     }

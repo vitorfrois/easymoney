@@ -1,45 +1,59 @@
-use chrono::Datelike;
-use itertools::multizip;
-use polars::prelude::*;
-use rusqlite::Result;
 use std::collections::HashMap;
-use std::fs;
-use std::str::FromStr;
 
 use crate::models::Category;
 
-pub struct CategoryMap {
-    pub map: Vec<(String, Category)>,
+#[derive(Clone)]
+pub struct FieldMap<V> {
+    pub map: HashMap<String, V>,
 }
 
-impl CategoryMap {
-    pub fn new() -> Result<Self> {
-        let map = CategoryMap::create_category_map();
-        Ok(CategoryMap { map })
-    }
-
-    fn create_category_map() -> Vec<(String, Category)> {
-        let mut map: Vec<(String, Category)> = Vec::new();
-        map.push(("ifood".to_string(), Category::Food));
-        map.push(("uber".to_string(), Category::Transportation));
-        map.push(("supermercado".to_string(), Category::Supermarket));
-        map.push(("restaurante".to_string(), Category::Food));
-        map.push(("lanche".to_string(), Category::Food));
-        map.push(("viacao".to_string(), Category::Trips));
-        map.push(("airbnb".to_string(), Category::Trips));
-        map.push(("spotify".to_string(), Category::Personal));
-        map.push(("doces".to_string(), Category::Food));
-        map.push(("esporte".to_string(), Category::Personal));
-        map.push(("culinaria".to_string(), Category::Food));
-        map
-    }
-
-    pub fn classify_title(&self, title: &String) -> Option<Category> {
-        for (substring, category) in &self.map {
+impl<T: Clone> FieldMap<T> {
+    pub fn get(&self, title: &String) -> Option<T> {
+        for (substring, value) in &self.map {
             if title.to_ascii_lowercase().contains(substring) {
-                return Some(category.clone());
+                return Some(value.clone());
             }
         }
         None
+    }
+
+    pub fn insert(&mut self, title: &String, somevalue: &Option<T>) {
+        match somevalue {
+            Some(value) => {
+                self.map
+                    .insert(title.to_string().to_ascii_lowercase(), value.clone());
+            }
+            None => (),
+        }
+    }
+}
+
+impl FieldMap<Category> {
+    pub fn new() -> Self {
+        let map = FieldMap::create_category_map();
+        FieldMap { map }
+    }
+
+    fn create_category_map() -> HashMap<String, Category> {
+        let mut map: HashMap<String, Category> = HashMap::new();
+        map.insert("ifood".to_string(), Category::Food);
+        map.insert("uber".to_string(), Category::Transportation);
+        map.insert("supermercado".to_string(), Category::Supermarket);
+        map.insert("restaurante".to_string(), Category::Food);
+        map.insert("lanche".to_string(), Category::Food);
+        map.insert("viacao".to_string(), Category::Trips);
+        map.insert("airbnb".to_string(), Category::Trips);
+        map.insert("spotify".to_string(), Category::Personal);
+        map.insert("doces".to_string(), Category::Food);
+        map.insert("esporte".to_string(), Category::Personal);
+        map.insert("culinaria".to_string(), Category::Food);
+        map
+    }
+}
+
+impl FieldMap<String> {
+    pub fn new() -> Self {
+        let map: HashMap<String, String> = HashMap::new();
+        FieldMap { map }
     }
 }

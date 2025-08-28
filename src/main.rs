@@ -6,6 +6,8 @@ use std::collections::HashMap;
 use std::fs;
 use std::str::FromStr;
 
+use crate::models::Category;
+
 pub mod app;
 pub mod db;
 pub mod event;
@@ -90,26 +92,10 @@ async fn main() -> Result<()> {
     let df = read_folder("../data".into()).expect("PathError");
     println!("{df}");
 
-    let database = db::Database::new()?;
-
     let transactions = convert_df(df);
 
-    for i in 1..5 {
-        println!("{:?}", transactions[i]);
-    }
-
-    match database.insert_transactions(transactions) {
-        Ok(v) => v,
-        Err(_) => println!("SQL Insert Error"),
-    }
-
-    let mut transactions = database.get_transactions()?;
-    let category_map = labeling::CategoryMap::new()?;
-    for transaction in transactions.iter_mut() {
-        transaction.group = category_map.classify_title(&transaction.title);
-    }
-
     let _ = app::init_app(transactions).await;
+
     // println!("First five transactions");
     // for i in 0..5 {
     //     println!("{}", transactions[i]);

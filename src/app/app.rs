@@ -9,9 +9,11 @@ use ratatui::{
 use strum::{Display, FromRepr};
 use strum_macros::EnumIter;
 
-use crate::app::table::TableComponent;
+use crate::db;
 use crate::event::{AppEvent, EventHandler};
-use crate::models::Transaction;
+use crate::labeling;
+use crate::models::{Category, NewTransaction, Transaction};
+use crate::{app::table::TableComponent, db::Database};
 
 #[derive(Default, Clone, Copy, Display, FromRepr, EnumIter)]
 pub enum CurrentTab {
@@ -37,19 +39,35 @@ impl CurrentTab {
 }
 
 pub struct App {
+    database: Database,
     running: bool,
     has_changed: bool,
     counter: u8,
     events: EventHandler,
     items: Vec<Transaction>,
     current_tab: CurrentTab,
-    table: TableComponent,
+    pub table: TableComponent,
     edit_popup: bool,
 }
 
 impl App {
-    fn new(transactions: Vec<Transaction>) -> Self {
-        Self {
+    fn new(transactions: Vec<NewTransaction>) -> Self {
+        let database = db::Database::new().expect("Could not acess Database");
+        match database.insert_transactions(transactions) {
+            Ok(v) => v,
+            Err(_) => println!("SQL Insert Error"),
+        }
+        let mut transactions = database.get_transactions().expect("Could not acess DB");
+        let category_map = labeling::FieldMap::<Category>::new();
+        for transaction in transactions.iter_mut() {
+            transaction.group = category_map.get(&transaction.title);
+        }
+
+        let category_map = database.get_categories().expect("Could not acess DB");
+        let title_map = database.get_titlemaps().expect("Could not acess DB");
+
+        let mut app = Self {
+            database,
             running: true,
             has_changed: true,
             counter: 0,
@@ -58,10 +76,20 @@ impl App {
             current_tab: CurrentTab::Table,
             items: transactions,
             edit_popup: false,
-        }
+        };
+
+        app.table.set_titlemap(title_map);
+        app.table.set_categories(category_map);
+        app.table.update_transactions();
+        app
     }
 
-    pub async fn run(mut self, mut terminal: DefaultTerminal) -> Result<()> {
+    pub fn save_to_db(&self) {
+        let _ = self.database.insert_categories(self.table.get_categories());
+        let _ = self.database.insert_titlemaps(self.table.get_titlemap());
+    }
+
+    pub async fn run(mut self, mut terminal: DefaultTerminal) -> Result<Vec<Transaction>> {
         while self.running {
             match self.events.next().await? {
                 AppEvent::Tick => {
@@ -81,7 +109,9 @@ impl App {
             }
         }
 
-        Ok(())
+        self.save_to_db();
+
+        Ok(self.table.items)
     }
 
     fn handle_key_events(&mut self, key_event: KeyEvent) -> color_eyre::Result<()> {
@@ -122,10 +152,12 @@ impl App {
     }
 }
 
-pub async fn init_app(transactions: Vec<Transaction>) -> Result<()> {
+pub async fn init_app(transactions: Vec<NewTransaction>) -> Result<()> {
     color_eyre::install()?;
     let terminal = ratatui::init();
-    let app_result = App::new(transactions).run(terminal).await;
+    let app = App::new(transactions);
+    let transactions = app.run(terminal).await;
     ratatui::restore();
-    app_result
+    println!("{:?}", transactions);
+    Ok(())
 }

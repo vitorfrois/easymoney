@@ -2,25 +2,27 @@ use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::Frame;
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Constraint, Direction, Layout, Offset, Rect};
-use ratatui::style::{Color, Style, Stylize};
+use ratatui::style::{Color, Modifier, Style, Styled, Stylize};
 use ratatui::text::Line;
-use ratatui::widgets::{Block, Borders, Clear, Paragraph, StatefulWidget, Widget};
-use strum::IntoEnumIterator;
+use ratatui::widgets::{Block, Borders, Clear, Paragraph, StatefulWidget, Widget, Wrap};
 
+use crate::app::color::{PALETTES, TableColors};
 use crate::models::{Category, Transaction};
 
 struct StringField {
     label: &'static str,
     value: String,
     max_length: usize,
+    style: ItemStyle,
 }
 
 impl StringField {
-    pub fn new(label: &'static str, value: &String, max_length: usize) -> Self {
+    pub fn new(label: &'static str, value: &String, max_length: usize, style: ItemStyle) -> Self {
         Self {
             label,
             value: value.clone(),
             max_length,
+            style,
         }
     }
     pub fn handle_key_event(&mut self, key_event: KeyEvent) {
@@ -53,21 +55,24 @@ impl StatefulWidget for &StringField {
         .split(area);
         let label = Line::from_iter([self.label, ": "]).bold();
         label.render(layout[0], buf);
-        let bg = Color::Black;
-        self.value.clone().bg(bg).render(layout[1], buf);
+        let text = Paragraph::new(self.value.clone()).style(self.style.non_selected);
+
+        text.render(layout[1], buf);
     }
 }
 
 struct CategoryField {
     label: &'static str,
     selected: Category,
+    style: ItemStyle,
 }
 
 impl CategoryField {
-    pub fn new(label: &'static str, value: Category) -> Self {
+    pub fn new(label: &'static str, value: Category, style: ItemStyle) -> Self {
         Self {
             label,
             selected: value,
+            style,
         }
     }
 
@@ -97,28 +102,33 @@ impl StatefulWidget for &CategoryField {
     fn render(self, area: Rect, buf: &mut Buffer, state: &mut PopupFocus) {
         let layout = Layout::horizontal([
             Constraint::Length(self.label.len() as u16 + 2),
-            Constraint::Fill(1),
+            Constraint::Max(self.value().to_string().len() as u16 + 4),
         ])
         .split(area);
 
         let label = Line::from_iter([self.label, ": "]).bold();
         label.render(layout[0], buf);
         let value = format!("< {} >", self.value());
-        let bg = match state {
-            PopupFocus::Category => Color::DarkGray,
-            _ => Color::Black,
+
+        let style = match state {
+            PopupFocus::Category => self.style.selected,
+            _ => self.style.non_selected,
         };
-        value.clone().to_string().bg(bg).render(layout[1], buf);
+        Paragraph::new(value)
+            .clone()
+            .style(style)
+            .render(layout[1], buf);
     }
 }
 
 struct Button {
     label: &'static str,
+    style: ItemStyle,
 }
 
 impl Button {
-    pub fn new(label: &'static str) -> Self {
-        Self { label }
+    pub fn new(label: &'static str, style: ItemStyle) -> Self {
+        Self { label, style }
     }
 
     pub fn handle_key_event(&mut self, key_event: KeyEvent) -> bool {
@@ -134,14 +144,14 @@ impl StatefulWidget for &Button {
 
     fn render(self, area: Rect, buf: &mut Buffer, state: &mut PopupFocus) {
         let label = Line::from(self.label).bold();
-        let bg = match state {
-            PopupFocus::Ok => Color::DarkGray,
-            _ => Color::Black,
+        let style = match state {
+            PopupFocus::Ok => self.style.selected,
+            _ => self.style.non_selected,
         };
         let button = Paragraph::new(label)
             .alignment(ratatui::layout::Alignment::Center)
             .block(Block::new().borders(Borders::ALL))
-            .bg(bg);
+            .style(style);
         button.render(area, buf);
     }
 }
@@ -164,12 +174,30 @@ impl PopupFocus {
     }
 }
 
+#[derive(Clone)]
+struct ItemStyle {
+    selected: Style,
+    non_selected: Style,
+}
+
+impl ItemStyle {
+    pub fn new(colors: &TableColors) -> Self {
+        Self {
+            non_selected: Style::default().fg(colors.header_fg).bg(colors.header_bg),
+            selected: Style::default()
+                .add_modifier(Modifier::REVERSED)
+                .fg(colors.selected_row_style_fg),
+        }
+    }
+}
+
 pub struct PopupForm {
     focus: PopupFocus,
     title: StringField,
     category: CategoryField,
     button: Button,
     transaction: Transaction,
+    colors: TableColors,
 }
 
 impl PopupForm {
@@ -177,18 +205,23 @@ impl PopupForm {
         let title_label = "Title";
         let max_len = 60 - 2 - 2 - (title_label.len() + 2);
 
+        let colors = TableColors::new(&PALETTES[0]);
+        let item_style = ItemStyle::new(&colors);
+
         PopupForm {
-            title: StringField::new(title_label, &transaction.title, max_len),
+            title: StringField::new(title_label, &transaction.title, max_len, item_style.clone()),
             category: CategoryField::new(
                 "Category",
                 match &transaction.group {
                     Some(category) => category.clone(),
                     None => Category::Other,
                 },
+                item_style.clone(),
             ),
-            button: Button::new("Ok"),
+            button: Button::new("Ok", item_style.clone()),
             focus: PopupFocus::default(),
             transaction: transaction,
+            colors,
         }
     }
 
@@ -234,7 +267,7 @@ impl PopupForm {
         let popup_block = Block::default()
             .title("Edit Transaction")
             .borders(Borders::ALL)
-            .style(Style::default().bg(Color::Black));
+            .style(Style::default().bg(self.colors.buffer_bg));
 
         let area = centered_rect(40, 10, frame.area());
 
@@ -248,7 +281,7 @@ impl PopupForm {
                 Constraint::Length(1),
                 Constraint::Length(1),
                 Constraint::Length(3),
-                Constraint::Length(1),
+                Constraint::Length(2),
             ])
             .split(area);
 
@@ -268,10 +301,12 @@ impl PopupForm {
                 .fg(Color::Red)
                 .centered(),
             false => Paragraph::new(
-                "Use Tab to navigate between fields. Use arrows to choose a Category.",
+                "Use Tab to navigate between fields\n
+                 and arrows to choose a Category.",
             )
-            .fg(Color::White)
-            .centered(),
+            .fg(self.colors.row_fg)
+            .centered()
+            .wrap(Wrap { trim: true }),
         };
         frame.render_widget(message, layout[3]);
 
@@ -290,7 +325,7 @@ fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Percentage((100 - percent_y) / 2),
-            Constraint::Min(8),
+            Constraint::Min(10),
             Constraint::Percentage((100 - percent_y) / 2),
         ])
         .split(r);
@@ -299,7 +334,7 @@ fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
         .direction(Direction::Horizontal)
         .constraints([
             Constraint::Percentage((100 - percent_x) / 2),
-            Constraint::Min(40),
+            Constraint::Min(60),
             Constraint::Percentage((100 - percent_x) / 2),
         ])
         .split(popup_layout[1])[1]
