@@ -1,7 +1,5 @@
 use color_eyre::eyre::OptionExt;
 use futures::{FutureExt, StreamExt};
-use ratatui::crossterm::event::KeyEvent;
-use std::result::Result;
 use tokio::sync::mpsc;
 use tokio::time::Duration;
 

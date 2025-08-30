@@ -1,21 +1,17 @@
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::Frame;
 use ratatui::layout::Direction;
-use ratatui::style::palette::tailwind;
-use ratatui::widgets::StatefulWidget;
 use ratatui::{
-    buffer::Buffer,
     layout::{Constraint, Layout, Rect},
-    style::{Color, Modifier, Style, Stylize},
+    style::{Modifier, Style, Stylize},
     text::Text,
-    widgets::{Block, BorderType, Cell, HighlightSpacing, Paragraph, Row, Table, TableState},
+    widgets::{Block, BorderType, Cell, HighlightSpacing, Row, Table, TableState},
 };
 use std::borrow::Cow;
 use std::cmp::Ordering;
-use std::collections::HashMap;
 
 use crate::app::color::{PALETTES, TableColors};
-use crate::app::footer::{self, Footer};
+use crate::app::footer::Footer;
 use crate::app::popup::PopupForm;
 use crate::labeling::FieldMap;
 use crate::models::{Category, Transaction};

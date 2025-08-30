@@ -1,15 +1,12 @@
 use std::vec::Vec;
 
-use ratatui::layout::{Constraint, Direction, Layout};
-use ratatui::style::Stylize;
-use ratatui::style::palette::tailwind;
-use ratatui::widgets::{Cell, Row, StatefulWidget, Table, TableState};
+use ratatui::layout::Constraint;
+use ratatui::widgets::{Row, StatefulWidget, Table, TableState};
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
     style::Style,
-    text::Text,
-    widgets::{Block, BorderType, Paragraph},
+    widgets::{Block, BorderType},
 };
 
 use crate::app::color::{PALETTES, TableColors};
@@ -94,7 +91,7 @@ impl StatefulWidget for &Footer {
             TableMode::Ordering => Some(get_ordering()),
             TableMode::Help => Some(get_help()),
             TableMode::Search => {
-                &self.search.render(area, buf, &mut PopupFocus::Title);
+                self.search.render(area, buf, &mut PopupFocus::Title);
                 None
             }
             _ => None,

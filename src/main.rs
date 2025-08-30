@@ -6,8 +6,6 @@ use std::collections::HashMap;
 use std::fs;
 use std::str::FromStr;
 
-use crate::models::Category;
-
 pub mod app;
 pub mod db;
 pub mod event;
@@ -77,7 +75,7 @@ fn convert_df(df: DataFrame) -> Vec<models::NewTransaction> {
     res
 }
 
-fn get_transactions_by_month(transactions: &Vec<models::Transaction>) -> HashMap<(i32, u32), f64> {
+fn _get_transactions_by_month(transactions: &Vec<models::Transaction>) -> HashMap<(i32, u32), f64> {
     let mut count: HashMap<(i32, u32), f64> = HashMap::new();
     let monthly_totals = transactions.iter().fold(&mut count, |acc, transaction| {
         *acc.entry((transaction.date.year(), transaction.date.month()))
@@ -95,51 +93,6 @@ async fn main() -> Result<()> {
     let transactions = convert_df(df);
 
     let _ = app::init_app(transactions).await;
-
-    // println!("First five transactions");
-    // for i in 0..5 {
-    //     println!("{}", transactions[i]);
-    // }
-    //
-    // fn filter_transaction(transactions: &Vec<models::Transaction>) -> Vec<models::Transaction> {
-    //     transactions
-    //         .iter()
-    //         .filter(|row| {
-    //             row.kind == models::Kind::DebitPurchase || row.kind == models::Kind::CreditPurchase
-    //         })
-    //         .cloned()
-    //         .collect()
-    // }
-    //
-    // let expenses = filter_transaction(&transactions);
-    //
-    // let total_expenses: f64 = expenses.iter().map(|row| row.amount).sum();
-    // let monthly_totals = get_transactions_by_month(&expenses);
-    // println!(
-    //     "Total expenses: {}. By month: {:?}",
-    //     total_expenses, monthly_totals
-    // );
-    // println!("Some expenses");
-    // for i in 1..5 {
-    //     println!("{:?}", expenses[i]);
-    // }
-    //
-    // let earnings: Vec<models::Transaction> = transactions
-    //     .iter()
-    //     .map(|v| v.clone())
-    //     .filter(|row| row.amount > 0.0)
-    //     .collect();
-    // let total_earnings: f64 = earnings.iter().map(|row| row.amount).sum();
-    // let monthly_earnings = get_transactions_by_month(&earnings);
-    // println!(
-    //     "Total earnings: {}. By month: {:?}",
-    //     total_earnings, monthly_earnings
-    // );
-    // println!("Some earnings");
-    //
-    // for (index, transaction) in earnings.iter().enumerate() {
-    //     println!("{}: {:?}", index, transaction);
-    // }
 
     Ok(())
 }

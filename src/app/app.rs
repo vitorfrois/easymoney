@@ -1,11 +1,6 @@
 use color_eyre::Result;
 use crossterm::event::{KeyCode, KeyEvent};
-use ratatui::{
-    DefaultTerminal, Frame,
-    buffer::{self, Buffer},
-    layout::{Constraint, Layout, Rect},
-    widgets::{StatefulWidget, Widget},
-};
+use ratatui::{DefaultTerminal, Frame};
 use strum::{Display, FromRepr};
 use strum_macros::EnumIter;
 
@@ -42,12 +37,10 @@ pub struct App {
     database: Database,
     running: bool,
     has_changed: bool,
-    counter: u8,
     events: EventHandler,
     items: Vec<Transaction>,
     current_tab: CurrentTab,
     pub table: TableComponent,
-    edit_popup: bool,
 }
 
 impl App {
@@ -70,12 +63,10 @@ impl App {
             database,
             running: true,
             has_changed: true,
-            counter: 0,
             events: EventHandler::new(),
             table: TableComponent::new(&transactions),
             current_tab: CurrentTab::Table,
             items: transactions,
-            edit_popup: false,
         };
 
         app.table.set_titlemap(title_map);
@@ -156,7 +147,7 @@ pub async fn init_app(transactions: Vec<NewTransaction>) -> Result<()> {
     color_eyre::install()?;
     let terminal = ratatui::init();
     let app = App::new(transactions);
-    let transactions = app.run(terminal).await;
+    let _transactions = app.run(terminal).await;
     ratatui::restore();
     Ok(())
 }
