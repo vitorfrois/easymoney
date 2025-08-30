@@ -121,7 +121,7 @@ impl App {
         }
 
         match key_event.code {
-            KeyCode::Char('q') | KeyCode::Esc => self.events.send(AppEvent::Quit),
+            KeyCode::Char('q') => self.events.send(AppEvent::Quit),
             KeyCode::Char(';') | KeyCode::Right => self.next_tab(),
             KeyCode::Char('j') | KeyCode::Left => self.previous_tab(),
             _ => match self.current_tab {

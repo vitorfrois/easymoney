@@ -1,10 +1,10 @@
 mod app;
-pub use app::init_app;
-
+mod button;
+mod categoryfield;
+mod color;
+mod footer;
 mod popup;
-
+mod stringfield;
 mod table;
 
-mod footer;
-
-mod color;
+pub use app::init_app;

@@ -15,7 +15,7 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 
 use crate::app::color::{PALETTES, TableColors};
-use crate::app::footer::Footer;
+use crate::app::footer::{self, Footer};
 use crate::app::popup::PopupForm;
 use crate::labeling::FieldMap;
 use crate::models::{Category, Transaction};
@@ -52,11 +52,15 @@ pub enum TableMode {
     Popup,
     Normal,
     Ordering,
+    Help,
+    Search,
+    Searched,
 }
 
 pub struct TableComponent {
     state: TableState,
     pub items: Vec<Transaction>,
+    filtered_items: Vec<Transaction>,
     colors: TableColors,
     popup: PopupForm,
     mode: TableMode,
@@ -71,6 +75,7 @@ impl TableComponent {
             state: TableState::default().with_selected(0),
             colors: TableColors::new(&PALETTES[0]),
             items: transactions.to_vec(),
+            filtered_items: transactions.to_vec(),
             mode: TableMode::Normal,
             title_map: FieldMap::<String>::new(),
             category_map: FieldMap::<Category>::new(),
@@ -124,18 +129,25 @@ impl TableComponent {
     }
 
     pub fn get_current_row(&self) -> Transaction {
-        self.items[self.state.selected().expect("Line number")].clone()
+        match self.mode {
+            TableMode::Searched => {
+                self.filtered_items[self.state.selected().expect("Line number")].clone()
+            }
+            _ => self.items[self.state.selected().expect("Line number")].clone(),
+        }
     }
 
     pub fn set_current_row(&mut self, transaction: &Transaction) {
         self.category_map
             .insert(&transaction.title, &transaction.group);
 
-        let item_title = self.items[self.state.selected().expect("Line number")]
-            .title
-            .clone();
-
-        self.items[self.state.selected().expect("Line number")] = transaction.clone();
+        let mut item_title = "".to_string();
+        for mut item in self.items.iter_mut() {
+            if item.id == transaction.id {
+                item_title = item.title.clone();
+                item = &mut transaction.clone();
+            }
+        }
 
         for (key, value) in &self.title_map.map.clone() {
             if *value == item_title {
@@ -162,6 +174,20 @@ impl TableComponent {
         }
     }
 
+    fn search_items(&mut self, substring: String) {
+        self.filtered_items = self
+            .items
+            .clone()
+            .into_iter()
+            .filter(|row| {
+                row.title
+                    .to_ascii_lowercase()
+                    .contains(&substring.to_ascii_lowercase())
+            })
+            .collect();
+        self.state.select_first();
+    }
+
     fn sort_items(&mut self, sort_option: SortOptions) {
         let sort_closure: fn(&Transaction, &Transaction) -> Ordering = match sort_option {
             SortOptions::DateAsc => |a, b| a.date.cmp(&b.date),
@@ -181,13 +207,6 @@ impl TableComponent {
 
     pub fn handle_key_events(&mut self, key_event: KeyEvent) {
         match self.mode {
-            TableMode::Popup => match self.popup.handle_key_event(key_event) {
-                Some(transaction) => {
-                    self.set_current_row(&transaction);
-                    self.mode = TableMode::Normal;
-                }
-                None => (),
-            },
             TableMode::Normal => match key_event.code {
                 KeyCode::Enter => {
                     self.mode = TableMode::Popup;
@@ -196,7 +215,19 @@ impl TableComponent {
                 KeyCode::Char('k') | KeyCode::Down => self.next_row(),
                 KeyCode::Char('l') | KeyCode::Up => self.previous_row(),
                 KeyCode::Char('o') => self.mode = TableMode::Ordering,
+                KeyCode::Char('?') => self.mode = TableMode::Help,
+                KeyCode::Char('/') => {
+                    self.filtered_items = self.items.clone();
+                    self.mode = TableMode::Search;
+                }
                 _ => (),
+            },
+            TableMode::Popup => match self.popup.handle_key_event(key_event) {
+                Some(transaction) => {
+                    self.set_current_row(&transaction);
+                    self.mode = TableMode::Normal;
+                }
+                None => (),
             },
             TableMode::Ordering => {
                 match key_event.code {
@@ -210,14 +241,48 @@ impl TableComponent {
                 }
                 self.mode = TableMode::Normal;
             }
+            TableMode::Search => {
+                self.state.select_first();
+                match key_event.code {
+                    KeyCode::Enter => {
+                        self.mode = TableMode::Searched;
+                        self.footer.search().clear_value();
+                    }
+                    KeyCode::Esc => {
+                        self.mode = TableMode::Normal;
+                        self.footer.search().clear_value();
+                    }
+                    _ => {
+                        self.footer.search().handle_key_event(key_event);
+                        let substring = self.footer.search().get_value();
+                        self.search_items(substring);
+                    }
+                };
+            }
+            TableMode::Searched => match key_event.code {
+                KeyCode::Esc => {
+                    self.mode = TableMode::Normal;
+                }
+                KeyCode::Enter => {
+                    self.popup = PopupForm::new(self.get_current_row());
+                    self.mode = TableMode::Popup;
+                }
+                KeyCode::Char('k') | KeyCode::Down => self.next_row(),
+                KeyCode::Char('l') | KeyCode::Up => self.previous_row(),
+                _ => (),
+            },
+            TableMode::Help => self.mode = TableMode::Normal,
         }
     }
 
     pub fn render(&mut self, frame: &mut Frame, area: Rect) {
         let footer_size = match self.mode {
-            TableMode::Normal => 3,
-            TableMode::Ordering => 9,
+            TableMode::Normal => 0,
+            TableMode::Ordering => 6 + 2,
             TableMode::Popup => 0,
+            TableMode::Help => 5 + 2,
+            TableMode::Search => 1,
+            TableMode::Searched => 1,
         };
 
         let layout = Layout::default()
@@ -238,12 +303,21 @@ impl TableComponent {
             .collect::<Row>()
             .style(header_style)
             .height(1);
-        let rows = self.items.iter().enumerate().map(|(i, data)| {
+
+        let item_list = match self.mode {
+            TableMode::Searched => &self.filtered_items,
+            TableMode::Search => &self.filtered_items,
+            _ => &self.items,
+        };
+
+        let rows = item_list.iter().enumerate().map(|(i, data)| {
             let item = data.ref_array(i as u32);
             item.into_iter().map(Cell::from).collect::<Row>().height(1)
         });
         let bar = " █ ";
-        let block = Block::bordered().title("Transactions");
+        let block = Block::bordered()
+            .border_type(BorderType::Rounded)
+            .title("Transactions");
         let t = Table::new(
             rows,
             [
