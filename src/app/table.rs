@@ -67,6 +67,7 @@ pub struct TableComponent {
 
 impl TableComponent {
     pub fn new(transactions: &Vec<Transaction>) -> Self {
+        let items = transactions.clone();
         Self {
             state: TableState::default().with_selected(0),
             colors: TableColors::new(&PALETTES[0]),

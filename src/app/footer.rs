@@ -1,7 +1,7 @@
 use std::vec::Vec;
 
 use ratatui::layout::Constraint;
-use ratatui::widgets::{Row, StatefulWidget, Table, TableState};
+use ratatui::widgets::{Borders, Row, StatefulWidget, Table, TableState};
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
@@ -102,7 +102,8 @@ impl StatefulWidget for &Footer {
             _ => "",
         };
 
-        let block = Block::bordered()
+        let block = Block::default()
+            .borders(Borders::ALL.difference(Borders::BOTTOM))
             .title(title)
             .border_type(BorderType::Rounded)
             .border_style(style);

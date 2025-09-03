@@ -1,9 +1,16 @@
+use std::fmt::format;
+
 use color_eyre::Result;
 use crossterm::event::{KeyCode, KeyEvent};
+use ratatui::buffer::Buffer;
+use ratatui::layout::{Constraint, Layout, Rect};
+use ratatui::text::Line;
+use ratatui::widgets::{Tabs, Widget};
 use ratatui::{DefaultTerminal, Frame};
-use strum::{Display, FromRepr};
+use strum::{Display, FromRepr, IntoEnumIterator};
 use strum_macros::EnumIter;
 
+use crate::app::chart::ChartComponent;
 use crate::db;
 use crate::event::{AppEvent, EventHandler};
 use crate::labeling;
@@ -15,8 +22,14 @@ pub enum CurrentTab {
     #[default]
     #[strum(to_string = "Transactions")]
     Table,
-    #[strum(to_string = "Home")]
-    Home,
+    #[strum(to_string = "Chart")]
+    Chart,
+}
+
+impl CurrentTab {
+    fn title(self) -> Line<'static> {
+        format!("  {self}  ").into()
+    }
 }
 
 impl CurrentTab {
@@ -41,6 +54,7 @@ pub struct App {
     items: Vec<Transaction>,
     current_tab: CurrentTab,
     pub table: TableComponent,
+    pub chart: ChartComponent,
 }
 
 impl App {
@@ -64,9 +78,10 @@ impl App {
             running: true,
             has_changed: true,
             events: EventHandler::new(),
-            table: TableComponent::new(&transactions),
+            table: TableComponent::new(&transactions.to_vec()),
             current_tab: CurrentTab::Table,
-            items: transactions,
+            items: transactions.to_vec(),
+            chart: ChartComponent::new(&transactions.to_vec()),
         };
 
         app.table.set_titlemap(title_map);
@@ -87,6 +102,7 @@ impl App {
                     if self.has_changed {
                         terminal.draw(|frame| self.draw(frame))?;
                         self.has_changed = false;
+                        self.chart.update_chart(&self.table.items);
                     }
                 }
                 AppEvent::Crossterm(event) => match event {
@@ -116,7 +132,7 @@ impl App {
             KeyCode::Char(';') | KeyCode::Right => self.next_tab(),
             KeyCode::Char('j') | KeyCode::Left => self.previous_tab(),
             _ => match self.current_tab {
-                CurrentTab::Home => (),
+                CurrentTab::Chart => self.chart.handle_key_events(key_event),
                 CurrentTab::Table => self.table.handle_key_events(key_event),
             },
         };
@@ -135,10 +151,24 @@ impl App {
         self.current_tab = self.current_tab.previous();
     }
 
+    fn render_tabs(&self, area: Rect, buf: &mut Buffer) {
+        let titles = CurrentTab::iter().map(CurrentTab::title);
+        let selected_tab_index = self.current_tab as usize;
+        Tabs::new(titles)
+            .select(selected_tab_index)
+            .divider(" ")
+            .render(area, buf);
+    }
+
     fn draw(&mut self, frame: &mut Frame) {
+        let [header_area, inner_area] =
+            Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).areas(frame.area());
+
+        self.render_tabs(header_area, frame.buffer_mut());
+
         match self.current_tab {
-            CurrentTab::Table => self.table.render(frame, frame.area()),
-            CurrentTab::Home => (),
+            CurrentTab::Table => self.table.render(frame, inner_area),
+            CurrentTab::Chart => self.chart.render(frame, inner_area),
         }
     }
 }

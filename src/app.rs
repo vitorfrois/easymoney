@@ -1,6 +1,7 @@
 mod app;
 mod button;
 mod categoryfield;
+mod chart;
 mod color;
 mod footer;
 mod popup;

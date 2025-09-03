@@ -6,6 +6,8 @@ use std::collections::HashMap;
 use std::fs;
 use std::str::FromStr;
 
+use crate::models::Category;
+
 pub mod app;
 pub mod db;
 pub mod event;
@@ -83,6 +85,18 @@ fn _get_transactions_by_month(transactions: &Vec<models::Transaction>) -> HashMa
         acc // Return the updated accumulator for the next iteration
     });
     monthly_totals.clone()
+}
+
+fn _get_transactions_by_category(transactions: &Vec<models::Transaction>) -> HashMap<String, f64> {
+    let mut count: HashMap<String, f64> = HashMap::new();
+    let category_totals = transactions.iter().fold(&mut count, |acc, transaction| {
+        match &transaction.group {
+            Some(category) => *acc.entry(category.to_string()).or_insert(0.0) += transaction.amount,
+            None => (),
+        }
+        acc // Return the updated accumulator for the next iteration
+    });
+    category_totals.clone()
 }
 
 #[tokio::main]

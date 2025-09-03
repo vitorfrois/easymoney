@@ -485,6 +485,7 @@ dependencies = [
  "serde",
  "strum 0.27.2",
  "strum_macros 0.27.2",
+ "termsize",
  "tokio",
  "tokio-macros",
 ]
@@ -2125,6 +2126,16 @@ name = "target-features"
 version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c1bbb9f3c5c463a01705937a24fdabc5047929ac764b2d5b9cf681c1f5041ed5"
+
+[[package]]
+name = "termsize"
+version = "0.1.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6f11ff5c25c172608d5b85e2fb43ee9a6d683a7f4ab7f96ae07b3d8b590368fd"
+dependencies = [
+ "libc",
+ "winapi",
+]
 
 [[package]]
 name = "thiserror"
