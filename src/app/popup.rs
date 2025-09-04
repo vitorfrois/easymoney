@@ -130,7 +130,7 @@ impl PopupForm {
             .title("Edit Transaction")
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
-            .style(Style::default().bg(self.colors.buffer_bg));
+            .style(Style::default());
 
         let area = centered_rect(40, 10, frame.area());
 

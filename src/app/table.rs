@@ -287,12 +287,11 @@ impl TableComponent {
             .constraints([Constraint::Fill(1), Constraint::Length(footer_size)])
             .split(area);
 
-        let header_style = Style::default()
-            .fg(self.colors.header_fg)
-            .bg(self.colors.header_bg);
-        let selected_row_style = Style::default()
-            .add_modifier(Modifier::REVERSED)
-            .fg(self.colors.selected_row_style_fg);
+        let header_style = Style::default().bold();
+        // .fg(self.colors.header_fg)
+        // .bg(self.colors.header_bg);
+        let selected_row_style = Style::default().add_modifier(Modifier::REVERSED);
+        // .fg(self.colors.selected_row_style_fg);
 
         let header = ["", "Date", "Title", "Amount (R$)", "Kind", "Group"]
             .into_iter()
@@ -336,7 +335,7 @@ impl TableComponent {
             bar.into(),
             "".into(),
         ]))
-        .bg(self.colors.buffer_bg)
+        // .bg(self.colors.buffer_bg)
         .highlight_spacing(HighlightSpacing::Always)
         .block(block);
 
