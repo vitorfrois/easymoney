@@ -4,7 +4,7 @@ use itertools::Itertools;
 use ratatui::{
     Frame,
     buffer::Buffer,
-    layout::{Constraint, Direction, Layout, Rect},
+    layout::{Constraint, Direction, Flex, Layout, Margin, Rect},
     style::{Style, Styled, Stylize},
     text::Line,
     widgets::{
@@ -187,6 +187,14 @@ impl MonthSummary {
     }
 }
 
+fn center(area: Rect, horizontal: Constraint, vertical: Constraint) -> Rect {
+    let [area] = Layout::horizontal([horizontal])
+        .flex(Flex::Center)
+        .areas(area);
+    let [area] = Layout::vertical([vertical]).flex(Flex::Center).areas(area);
+    area
+}
+
 pub struct ChartComponent {
     items: Vec<MonthSummary>,
     state: TableState,
@@ -300,24 +308,22 @@ impl ChartComponent {
             .border_type(BorderType::Rounded)
             .borders(Borders::ALL);
 
-        let inner_area = block.inner(area);
+        let inner_area = block.inner(area).inner(Margin::new(5, 0));
         frame.render_widget(block, area);
 
         let number_bars = Category::iter().len() as u16;
-        let border_width = 10;
-        let bar_width = (inner_area.width - 50) / number_bars;
-        let bar_gap = 2;
-        let chart_width = ((1 + number_bars) * bar_gap) + (bar_width * number_bars) + border_width;
+        let bar_width = inner_area.width / (number_bars + 2);
 
-        let [area] = Layout::vertical([Constraint::Percentage(95)]).areas(area);
-        let [chart_area] = Layout::horizontal([Constraint::Length(chart_width)])
-            .flex(ratatui::layout::Flex::Center)
-            .areas(area);
+        let chart_area = center(
+            inner_area,
+            Constraint::Length(inner_area.width as u16),
+            Constraint::Length(inner_area.height),
+        );
 
         let barchart = vertical_barchart(
             &current_month.categorized_expenses,
             bar_width,
-            bar_gap,
+            2,
             self.max_height as u64,
             false,
         );
