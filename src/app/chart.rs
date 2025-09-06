@@ -8,8 +8,8 @@ use ratatui::{
     style::{Style, Styled, Stylize},
     text::Line,
     widgets::{
-        Bar, BarChart, BarGroup, Block, BorderType, Borders, Cell, List, ListItem, ListState, Row,
-        StatefulWidget, Table, TableState, Widget,
+        Axis, Bar, BarChart, BarGroup, Block, BorderType, Borders, Cell, Chart, Dataset, List,
+        ListItem, ListState, Row, StatefulWidget, Table, TableState, Widget,
     },
 };
 use strum::{Display, IntoEnumIterator};
@@ -296,6 +296,7 @@ impl ChartComponent {
         .split(right_layout[1]);
 
         self.render_rule_chart(frame, sub_right_layout[1]);
+        self.render_scatter(frame, sub_right_layout[0]);
         self.render_category_chart(frame, right_layout[0]);
         self.render_list(frame, layout[0]);
     }
@@ -311,24 +312,21 @@ impl ChartComponent {
         let inner_area = block.inner(area).inner(Margin::new(5, 0));
         frame.render_widget(block, area);
 
-        let number_bars = Category::iter().len() as u16;
-        let bar_width = inner_area.width / (number_bars + 2);
-
-        let chart_area = center(
-            inner_area,
-            Constraint::Length(inner_area.width as u16),
-            Constraint::Length(inner_area.height),
-        );
+        let number_bars = (Category::iter().len() + 1) as f64;
+        let bar_gap = 2.0;
+        let calculated_width = (inner_area.width as f64 - (number_bars - 1.0) * bar_gap)
+            / (number_bars).floor().max(1.0);
+        let bar_width = calculated_width;
 
         let barchart = vertical_barchart(
             &current_month.categorized_expenses,
-            bar_width,
-            2,
+            bar_width as u16,
+            bar_gap as u16,
             self.max_height as u64,
             false,
         );
 
-        frame.render_widget(barchart, chart_area);
+        frame.render_widget(barchart, inner_area);
     }
 
     fn render_rule_chart(&self, frame: &mut Frame, area: Rect) {
@@ -338,9 +336,6 @@ impl ChartComponent {
             .title("Month by 50/30/20 Rule")
             .border_type(BorderType::Rounded)
             .borders(Borders::ALL);
-
-        let inner_area = block.inner(area);
-        frame.render_widget(block, area);
 
         let rule_expenses: HashMap<String, f64> = zip(
             [
@@ -358,29 +353,19 @@ impl ChartComponent {
         )
         .collect::<HashMap<String, f64>>();
 
-        let num_bars = rule_expenses.len() as u16;
-        let bar_width = 7;
-        let bar_gap = 2;
-        let chart_width = num_bars * bar_width + (num_bars.saturating_sub(1)) * bar_gap;
+        let inner_area = block.inner(area).inner(Margin::new(2, 0));
+        frame.render_widget(block, area);
 
-        let chart_area = if chart_width < inner_area.width {
-            let horizontal_layout = Layout::new(
-                Direction::Horizontal,
-                [
-                    Constraint::Length((inner_area.width.saturating_sub(chart_width)) / 2),
-                    Constraint::Length(chart_width),
-                    Constraint::Length((inner_area.width.saturating_sub(chart_width)) / 2),
-                ],
-            )
-            .split(inner_area);
-            horizontal_layout[1]
-        } else {
-            inner_area
-        };
+        let number_bars = rule_expenses.len() as f64;
+        let bar_gap = 2.0;
+        let calculated_width = (inner_area.width as f64 - (number_bars - 1.0) * bar_gap)
+            / (number_bars).floor().max(1.0);
+        let bar_width = calculated_width;
 
-        let barchart = vertical_barchart(&rule_expenses, bar_width, bar_gap, 100, true);
+        let barchart =
+            vertical_barchart(&rule_expenses, bar_width as u16, bar_gap as u16, 100, true);
 
-        frame.render_widget(barchart, chart_area);
+        frame.render_widget(barchart, inner_area);
     }
 
     fn render_list(&mut self, frame: &mut Frame, area: Rect) {
@@ -388,6 +373,7 @@ impl ChartComponent {
             .title("Expenses list")
             .border_type(BorderType::Rounded)
             .borders(Borders::ALL);
+
         let rows = self.items.iter().map(|item| {
             item.ref_array()
                 .into_iter()
@@ -411,5 +397,67 @@ impl ChartComponent {
 
         StatefulWidget::render(list, area, frame.buffer_mut(), &mut self.state);
     }
+
+    fn render_scatter(&mut self, frame: &mut Frame, area: Rect) {
+        let expense_data = self
+            .items
+            .iter()
+            .take(6)
+            .map(|item| {
+                (
+                    convert_date_float(item.month, item.year),
+                    item.total_expenses as f64,
+                )
+            })
+            .collect::<Vec<(f64, f64)>>();
+
+        let expense_dataset = Dataset::default()
+            .name("Monthly ")
+            .marker(ratatui::symbols::Marker::Dot)
+            .graph_type(ratatui::widgets::GraphType::Line)
+            .data(&expense_data);
+
+        let data = vec![expense_dataset];
+
+        let block = Block::default()
+            .border_type(BorderType::Rounded)
+            .borders(Borders::ALL);
+
+        let minx = expense_data.iter().map(|a| a.0).reduce(f64::min).unwrap();
+        let maxx = expense_data.iter().map(|a| a.0).reduce(f64::max).unwrap();
+        let miny = expense_data.iter().map(|a| a.1).reduce(f64::min).unwrap();
+        let maxy = expense_data.iter().map(|a| a.1).reduce(f64::max).unwrap();
+
+        let y_axis = Axis::default().bounds([miny, maxy]).labels([
+            miny.to_string(),
+            ((miny + maxy) / 2.0).to_string(),
+            maxy.to_string(),
+        ]);
+
+        let x_axis = Axis::default().bounds([minx, maxx]).labels([
+            convert_float_string(minx),
+            convert_float_string((minx + maxx) / 2.0),
+            convert_float_string(maxx),
+        ]);
+
+        let chart = Chart::new(data).block(block).y_axis(y_axis).x_axis(x_axis);
+
+        Widget::render(chart, area, frame.buffer_mut());
+    }
 }
 
+fn convert_date_float(month: u32, year: i32) -> f64 {
+    (year as f64 + (month as f64) / 12.0) as f64
+}
+
+fn convert_float_string(float: f64) -> String {
+    let month = (float.fract() * 12.0).round() as u32;
+    let year = float.trunc() as i32;
+    format!("{}, {}", month, year)
+}
+
+fn convert_float_date(float: f64) -> (u32, i32) {
+    let month = (float.fract() * 12.0).round() as u32;
+    let year = float.trunc() as i32;
+    (month, year)
+}
